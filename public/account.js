@@ -1,6 +1,7 @@
 // Accounts UI: #/login, #/signup, #/account (watchlist, password, admin).
 import { esc, req, getMe, setMe, me, logout } from './session.js';
 import { mountWatchTable } from './wltable.js';
+import { openImport } from './csvimport.js';
 
 const ago = (ms) => {
   if (!ms) return 'never';
@@ -192,6 +193,7 @@ export async function renderAccount(app) {
       <div class="wl-tools" id="wlTools"></div>
     </div>
     <div class="auth-err" id="listErr" role="alert"></div>
+    <div id="impBox"></div>
     <div id="wlSlot"></div>
     <div id="adminBox"></div>
     <h2 class="section">Change password</h2>
@@ -234,7 +236,7 @@ export async function renderAccount(app) {
       ? ''
       : mode === 'rename'
         ? `<form class="wl-inline" id="renForm"><input maxlength="40" value="${esc(l.name)}" aria-label="List name" required /><button type="submit" class="btn-primary sm">Save</button><button type="button" class="btn-ghost sm" data-cancel>Cancel</button></form>`
-        : `<button type="button" class="btn-ghost sm" id="renBtn">Rename</button>${lists.length > 1 ? `<button type="button" class="btn-ghost sm danger" id="delBtn">${mode === 'delete' ? `Really delete "${esc(l.name)}"?` : 'Delete list'}</button>` : ''}`;
+        : `<button type="button" class="btn-ghost sm" id="impBtn">Import CSV</button><button type="button" class="btn-ghost sm" id="renBtn">Rename</button>${lists.length > 1 ? `<button type="button" class="btn-ghost sm danger" id="delBtn">${mode === 'delete' ? `Really delete "${esc(l.name)}"?` : 'Delete list'}</button>` : ''}`;
     const f = root.querySelector('#newForm input, #renForm input');
     if (f) {
       f.focus();
@@ -282,6 +284,11 @@ export async function renderAccount(app) {
     if (e.target.closest('#newBtn')) {
       mode = 'new';
       return paintTabs();
+    }
+    if (e.target.closest('#impBtn')) {
+      openImport($('#impBox'), { lists, current: cur, maxLists, onDone: (id) => loadLists(id) });
+      $('#impBox').scrollIntoView({ block: 'nearest' });
+      return;
     }
     if (e.target.closest('#renBtn')) {
       mode = 'rename';

@@ -294,6 +294,53 @@ export async function handleWatchlist(request, env, path) {
     return json({ ok: true, ticker: t, list: list.id });
   }
 
+  // Bulk import (CSV upload): into an existing list, or a new list made here.
+  if (path === '/api/watchlist/import' && method === 'POST') {
+    const body = await readJson(request);
+    if (!body || !Array.isArray(body.tickers)) return json({ error: 'Bad request.' }, 400);
+    const seen = new Set();
+    const invalid = [];
+    const tickers = [];
+    for (const raw of body.tickers.slice(0, 500)) {
+      const t = cleanTicker(raw);
+      if (!t) invalid.push(String(raw).slice(0, 16));
+      else if (!seen.has(t)) {
+        seen.add(t);
+        tickers.push(t);
+      }
+    }
+    let list;
+    if (body.newName != null) {
+      const name = cleanName(body.newName);
+      if (!name) return json({ error: 'Give the new list a name.' }, 400);
+      const r = await env.DB.prepare(
+        `INSERT INTO watchlists (user_id, name, position, created_at)
+         SELECT ?1, ?2, COALESCE((SELECT MAX(position) + 1 FROM watchlists WHERE user_id = ?1), 0), ?3
+         WHERE (SELECT COUNT(*) FROM watchlists WHERE user_id = ?1) < ?4`
+      )
+        .bind(u.id, name, Date.now(), MAX_LISTS)
+        .run();
+      if (!r.meta.changes) return json({ error: `You can have up to ${MAX_LISTS} watchlists.` }, 400);
+      list = { id: r.meta.last_row_id, name };
+    } else {
+      ({ list } = await pickList(env, u.id, body.list));
+      if (!list) return notFound();
+    }
+    const current = await listTickers(env, list.id);
+    const existing = new Set(current.map((i) => i.ticker));
+    const already = tickers.filter((t) => existing.has(t));
+    const fresh = tickers.filter((t) => !existing.has(t));
+    const room = Math.max(0, MAX_WATCH - existing.size);
+    const add = fresh.slice(0, room);
+    const overCap = fresh.slice(room);
+    if (add.length) {
+      const now = Date.now();
+      const start = current.reduce((m, i) => Math.max(m, i.position), -1) + 1;
+      await env.DB.batch(add.map((t, i) => env.DB.prepare('INSERT OR IGNORE INTO watchlist_items (list_id, ticker, position, added_at) VALUES (?, ?, ?, ?)').bind(list.id, t, start + i, now + i)));
+    }
+    return json({ list: { id: list.id, name: list.name }, added: add, already, overCap, invalid, max: MAX_WATCH });
+  }
+
   const one = path.match(/^\/api\/watchlist\/([^/]+)$/);
   if (one && method === 'DELETE') {
     const t = cleanTicker(decodeURIComponent(one[1]));
