@@ -1,0 +1,19 @@
+{
+  "name": "mokosveri",
+  "version": "1.0.0",
+  "description": "",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node test/run.mjs && node test/options.mjs",
+    "db:init": "wrangler d1 execute mokosveri-db --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^4.165.0"
+  },
+  "type": "module",
+  "private": true
+}

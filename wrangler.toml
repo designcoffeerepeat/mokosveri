@@ -1,0 +1,38 @@
+name = "mokosveri"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "4cbc09df643c4e039ddc24af47f17775"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mokosveri-db"
+database_id = "dd809369-37a9-45e8-9ea2-025f0bb3e0f7"
+
+[triggers]
+# One cron (Workers Free allows 5 per account). It runs whichever jobs are due:
+# Form 4 ingest every 10 min, buzz list every 30 min, ticker refresh daily.
+crons = ["*/10 * * * *"]
+
+[ai]
+binding = "AI"
+
+[vars]
+AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+# SEC asks automated tools to identify themselves with a contact address.
+SEC_USER_AGENT = "Mokosveri Research lostbanjo@zoho.com"
+INSIDER_DAYS = "30"
+BUZZ_MAX_TICKERS = "36"
+FORM4_PER_RUN = "44"
+
+[observability]
+enabled = true
