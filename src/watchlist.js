@@ -199,7 +199,7 @@ export async function handleWatchlist(request, env, path) {
   // Every list with its tickers (for the "Add to watchlist" picker).
   if (path === '/api/watchlist/tickers' && method === 'GET') {
     const lists = await userLists(env, u.id);
-    const r = await env.DB.prepare('SELECT i.list_id, i.ticker FROM watchlist_items i JOIN watchlists l ON l.id = i.list_id WHERE l.user_id = ?').bind(u.id).all();
+    const r = await env.DB.prepare('SELECT i.list_id, i.ticker FROM watchlist_items i JOIN watchlists l ON l.id = i.list_id WHERE l.user_id = ? ORDER BY i.position, i.added_at').bind(u.id).all();
     const by = new Map(lists.map((l) => [l.id, []]));
     for (const row of r.results || []) if (by.has(row.list_id)) by.get(row.list_id).push(row.ticker);
     return json({ lists: lists.map((l) => ({ id: l.id, name: l.name, tickers: by.get(l.id) })) });

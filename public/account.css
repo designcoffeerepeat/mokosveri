@@ -127,22 +127,39 @@ td.flash-down { animation: flashDown 1.4s ease-out; }
 .btn-primary.sm { height: 32px; padding: 0 12px; font-size: 13px; border-radius: 8px; }
 #listErr:not(:empty) { margin-bottom: 10px; }
 
-/* Home page accordion */
-.home-lists { margin-top: 26px; }
-.home-lists:empty { display: none; }
-.home-lists-cta { margin-top: 4px; }
-.acc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.acc-head .section { margin: 0 0 14px; }
-.acc { display: grid; gap: 10px; }
-.acc-item { overflow: hidden; }
-.acc-item > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer; font-weight: 600; font-size: 15px; user-select: none; }
-.acc-item > summary::-webkit-details-marker { display: none; }
-.acc-item > summary:hover { background: var(--surface-2); }
-.acc-item > summary:focus-visible { outline: 2px solid var(--ink-2); outline-offset: -2px; }
+/* Home page: watchlists in a right-hand column */
+.home-grid { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 28px; align-items: start; }
+.home-main { min-width: 0; }
+.home-side { position: sticky; top: 124px; margin-top: 40px; max-height: calc(100vh - 140px); overflow-y: auto; scrollbar-width: thin; }
+.home-side:empty { display: none; }
+.side-card { padding: 4px 0; overflow: hidden; }
+.side-h { display: flex; align-items: center; gap: 8px; padding: 10px 14px 8px; font: 600 12px var(--sans); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.side-h > span:first-child { flex: 1; }
+.side-h a { font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 12px; }
+.side-live { display: inline-flex; align-items: center; gap: 5px; text-transform: none; letter-spacing: 0; font-weight: 500; cursor: help; }
+.side-live:empty { display: none; }
+.side-cta { padding: 0 14px 10px; margin: 0; font-size: 13px; }
+.side-item { border-top: 1px solid var(--line); }
+.side-item > summary { list-style: none; display: flex; align-items: center; gap: 8px; padding: 9px 14px; cursor: pointer; font-weight: 600; font-size: 13.5px; user-select: none; }
+.side-item > summary::-webkit-details-marker { display: none; }
+.side-item > summary:hover { background: var(--surface-2); }
+.side-item > summary:focus-visible { outline: 2px solid var(--ink-2); outline-offset: -2px; }
+.side-item .wl-count { margin-left: auto; }
 .acc-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.acc-chev { width: 8px; height: 8px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s; flex: none; margin-right: 2px; }
-.acc-item[open] .acc-chev { transform: rotate(45deg); }
-.acc-body .wl-card { border: 0; border-top: 1px solid var(--line); border-radius: 0; box-shadow: none; }
+.acc-chev { width: 7px; height: 7px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform 0.15s; flex: none; }
+.side-item[open] .acc-chev { transform: rotate(45deg); }
+.side-body { padding: 0 6px 8px; }
+.side-empty { font-size: 12.5px; margin: 0; padding: 2px 8px 4px; }
+.side-tbl { font-size: 12.5px; }
+.side-tbl th { padding: 4px 8px; font-size: 11px; }
+.side-tbl td { padding: 5px 8px; border-bottom: 0; font-size: 12.5px; vertical-align: middle; }
+.side-tbl tbody tr:hover td { background: var(--surface-2); }
+.side-tbl a { text-decoration: none; font-weight: 500; }
+.side-tbl a:hover { text-decoration: underline; }
+@media (max-width: 960px) {
+  .home-grid { grid-template-columns: minmax(0, 1fr); }
+  .home-side { position: static; max-height: none; overflow: visible; margin-top: 8px; }
+}
 
 /* "Add to watchlist" picker on ticker pages */
 .watch-wrap { position: relative; display: inline-block; }

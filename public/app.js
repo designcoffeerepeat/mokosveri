@@ -130,13 +130,19 @@ function buzzRow(r) {
 }
 
 async function renderHome() {
-  // Signed-in users see their watchlists (accordion) right under the hero.
-  const listsEl = document.createElement('div');
-  listsEl.className = 'home-lists';
+  // Watchlists live in a narrow right-hand column (below the content on phones).
+  // The same element is moved into each fresh layout, so it keeps its state.
+  const listsEl = document.createElement('aside');
+  listsEl.className = 'home-side';
+  listsEl.setAttribute('aria-label', 'Your watchlists');
   const placeLists = () => {
-    const h = app.querySelector('.hero');
-    if (h) h.after(listsEl);
-    else app.prepend(listsEl);
+    const main = document.createElement('div');
+    main.className = 'home-main';
+    main.append(...app.childNodes);
+    const grid = document.createElement('div');
+    grid.className = 'home-grid';
+    grid.append(main, listsEl);
+    app.append(grid);
   };
   import('/homelists.js').then((m) => m.mountHomeLists(listsEl));
   document.title = 'Mokosveri Research';
