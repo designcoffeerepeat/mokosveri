@@ -12,6 +12,7 @@ import { cryptoLong } from './sources/cryptolong.js';
 import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
+import { buildEvents } from './events.js';
 import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
 
@@ -217,6 +218,13 @@ async function handleApi(request, env, ctx, url) {
 
   if (path === '/api/sentiment') {
     const r = await settle(buildSentiment(env));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
+  // Market events calendar. ?watch=AAPL,MSFT flags (and adds earnings for) the reader's watchlist.
+  if (path === '/api/events') {
+    const watch = (url.searchParams.get('watch') || '').split(',').map((x) => cleanTicker(x)).filter(Boolean).slice(0, 25);
+    const r = await settle(buildEvents(env, { watch }));
     return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
   }
 
