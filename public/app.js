@@ -1,5 +1,7 @@
 // Mokosveri front end. Vanilla JS, hash routing: #/ and #/t/TICKER
 import { mountWatchButton } from './session.js';
+// Coins with long-term power law and rainbow models (kept in step with public/cryptolong.js).
+const CRYPTO_LONG = /^(BTC|ETH|SOL|XRP|BNB|DOGE|ADA|LTC)-USD$/;
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 
@@ -277,12 +279,14 @@ function paintShell(h) {
 
     <h2 class="section">Price chart</h2>
     <div class="card chart-box pc" id="chartBox"></div>
+    ${CRYPTO_LONG.test(h.ticker) ? '<h2 class="section">Long-term models <small class="muted">power law and rainbow</small></h2><div id="cryptoBox"></div>' : ''}
     <div id="tkRest">${h.type === 'Index' ? skel(3) : `${skel(5)}${skel(4)}`}</div>
   `;
   mountWatchButton($('#watchSlot'), h.ticker);
   showExtended(h.ticker);
   // The chart loads its own data and is never redrawn when the analysis lands.
   import('/chart.js').then((c) => c.mountChart($('#chartBox'), h.ticker, api));
+  if (CRYPTO_LONG.test(h.ticker)) import('/cryptolong.js').then((c) => c.mountCryptoLong($('#cryptoBox'), h.ticker, api));
 }
 
 async function renderTicker(t) {
