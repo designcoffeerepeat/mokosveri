@@ -1,5 +1,7 @@
 # Mokosveri Research
 
+**Live site: [https://mokosveri.design-coffee-repeat.workers.dev](https://mokosveri.design-coffee-repeat.workers.dev)**
+
 Stock and ETF research site on Cloudflare Workers (static assets + API + cron jobs, KV cache, D1 database).
 
 ## Deploy
