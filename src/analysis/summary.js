@@ -1,7 +1,7 @@
 // Trader-style summary. Built from the analysis data with fixed templates
 // (always works), then optionally tightened into a short read by Workers AI.
 // Numbers first, no hand-holding, no dashes.
-import { cached } from '../util.js';
+import { cached, withBudget } from '../util.js';
 
 const money = (v) => {
   if (v == null || !isFinite(v)) return null;
@@ -185,12 +185,15 @@ async function aiParagraph(env, a, f) {
   return text;
 }
 
-export async function plainSummary(env, a) {
+// The AI note gets a few seconds; past that the template note is shown and the
+// AI note is cached in the background for the next visit.
+export async function plainSummary(env, a, opts = {}) {
   const f = buildPlainFacts(a);
   let paragraph = null;
   let aiWritten = false;
   try {
-    paragraph = await cached(env, `sum2:${a.ticker}:${a.score}:${(a.news && a.news[0] && a.news[0].title || '').slice(0, 24)}`, 3 * 3600, () => aiParagraph(env, a, f));
+    const p = cached(env, `sum2:${a.ticker}:${a.score}:${(a.news && a.news[0] && a.news[0].title || '').slice(0, 24)}`, 3 * 3600, () => aiParagraph(env, a, f));
+    paragraph = await withBudget(p, opts.budgetMs || 5000, null, opts.waitUntil);
     aiWritten = !!paragraph;
   } catch {}
   if (!paragraph) paragraph = templateParagraph(f);

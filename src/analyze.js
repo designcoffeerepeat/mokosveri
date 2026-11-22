@@ -10,28 +10,36 @@ import { congressForTicker } from './sources/congress.js';
 import { computeTechnicals } from './analysis/technicals.js';
 import { scoreInsider, scoreTechnical, scoreAnalyst, scorePositioning, scoreCongress, scoreSocial, scoreNews, composite, movePotential } from './analysis/score.js';
 
-export async function analyzeTicker(env, ticker) {
+export async function analyzeTicker(env, ticker, opts = {}) {
   const days = parseInt(env.INSIDER_DAYS || '30', 10);
+  const waitUntil = opts.waitUntil || null;
   // Indices (VIX, SPX...) have no insiders, filings, analysts or Congress trades.
   const idx = isIndex(ticker);
   const skip = (p) => (idx ? Promise.resolve({ ok: false, skipped: true, error: 'not applicable to an index' }) : settle(p()));
-  const [px, spy, qs, st, ape, trend, cong, ins] = await Promise.all([
-    settle(chart(env, ticker, '1y')),
+  const pxP = settle(chart(env, ticker, '1y'));
+  const qsP = settle(quoteSummary(env, ticker));
+  // News only needs the company name, so start it as soon as the price and
+  // summary calls are back instead of waiting on SEC and social feeds.
+  const nwP = Promise.all([pxP, qsP]).then(([px, qs]) => {
+    const q0 = qs.ok ? qs.value : {};
+    const nameGuess = (q0.price && (q0.price.longName || q0.price.shortName)) || (px.ok && px.value.meta.name) || '';
+    return settle(latestNews(env, ticker, nameGuess));
+  });
+  const [px, spy, qs, st, ape, trend, cong, ins, nw] = await Promise.all([
+    pxP,
     settle(chart(env, 'SPY', '1y')),
-    settle(quoteSummary(env, ticker)),
+    qsP,
     skip(() => stocktwitsSentiment(env, ticker)),
     skip(() => apeWisdom(env)),
     skip(() => stocktwitsTrending(env)),
     skip(() => congressForTicker(env, ticker)),
     skip(() => companyInsiders(env, ticker, days)),
+    nwP,
   ]);
 
   if (!px.ok || !px.value.bars.length) {
     return { error: `Could not find price data for ${ticker}. Check the symbol and try again.`, status: 404 };
   }
-  const q0 = qs.ok ? qs.value : {};
-  const nameGuess = (q0.price && (q0.price.longName || q0.price.shortName)) || px.value.meta.name || '';
-  const nw = await settle(latestNews(env, ticker, nameGuess));
   const sources = {
     price: px.ok,
     benchmark: spy.ok,
@@ -134,7 +142,7 @@ export async function analyzeTicker(env, ticker) {
   const trending = trend.ok ? trend.value.some((r) => r.ticker === ticker) : false;
   const social = { ape: apeRow || null, st: st.ok ? st.value : null, trending };
 
-  const newsSent = nw.ok && nw.value.items.length ? await scoreHeadlines(env, ticker, nw.value.items) : null;
+  const newsSent = nw.ok && nw.value.items.length ? await scoreHeadlines(env, ticker, nw.value.items, { waitUntil }) : null;
 
   const congressTrades = cong.ok ? cong.value : null;
 
@@ -216,6 +224,6 @@ export async function analyzeTicker(env, ticker) {
     sources,
     errors,
   };
-  result.plain = await plainSummary(env, result);
+  result.plain = await plainSummary(env, result, { waitUntil });
   return result;
 }

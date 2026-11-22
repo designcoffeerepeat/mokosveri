@@ -1,6 +1,7 @@
 // Mokosveri: stock and ETF research. Cloudflare Worker entry point.
 import { json, cleanTicker, cached, settle, INDEX_ALIASES, INDEX_NAMES } from './util.js';
 import { analyzeTicker } from './analyze.js';
+import { tickerSnapshot } from './snapshot.js';
 import { buildBuzz, mergedInsiderBuys } from './buzz.js';
 import { ingestForm4, refreshTickerTable, pruneOld } from './sources/sec.js';
 import { congressRecent } from './sources/congress.js';
@@ -12,6 +13,10 @@ import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
 
 const BUZZ_KEY = 'buzz:v1';
+// A ticker analysis counts as fresh for 15 minutes and is still shown, while a
+// new one is built in the background, for up to 6 hours.
+const ANALYZE_FRESH_MS = 15 * 60e3;
+const ANALYZE_STALE_MS = 6 * 3600e3;
 
 async function logJob(env, name, data) {
   try {
@@ -86,21 +91,49 @@ async function handleApi(request, env, ctx, url) {
     return json(b);
   }
 
+  // Quick first paint for the ticker page: price, header and the 1y series.
+  const sm = path.match(/^\/api\/snapshot\/([^/]+)$/);
+  if (sm) {
+    const t = cleanTicker(decodeURIComponent(sm[1]));
+    if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
+    const s = await tickerSnapshot(env, t, (p) => ctx.waitUntil(p));
+    return s.error ? json(s, s.status || 500) : json(s);
+  }
+
   const m = path.match(/^\/api\/analyze\/([^/]+)$/);
   if (m) {
     const t = cleanTicker(decodeURIComponent(m[1]));
     if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
     const fresh = url.searchParams.get('fresh') === '1';
     const key = `an:v1:${t}`;
+    const now = Date.now();
+    const refresh = async () => {
+      const a = await analyzeTicker(env, t, { waitUntil: (p) => ctx.waitUntil(p) });
+      if (a.error) return a;
+      ctx.waitUntil(env.DB.prepare('INSERT OR REPLACE INTO cache (k, v, exp) VALUES (?, ?, ?)').bind(key, JSON.stringify(a), Date.now() + ANALYZE_FRESH_MS).run());
+      ctx.waitUntil(rememberScore(env, a).catch(() => {}));
+      return a;
+    };
     if (!fresh) {
-      const hit = await env.DB.prepare('SELECT v FROM cache WHERE k = ? AND exp > ?').bind(key, Date.now()).first();
-      if (hit) return new Response(hit.v, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+      const hit = await env.DB.prepare('SELECT v, exp FROM cache WHERE k = ?').bind(key).first();
+      if (hit && hit.exp > now) return new Response(hit.v, { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+      let old = null;
+      try {
+        old = hit ? JSON.parse(hit.v) : null;
+      } catch {}
+      if (old && now - new Date(old.asOf).getTime() < ANALYZE_STALE_MS) {
+        // Older than 15 minutes but less than a few hours: answer right away
+        // with the old analysis and rebuild it in the background. Pushing the
+        // expiry out a couple of minutes stops parallel visits from all
+        // rebuilding at once. The page asks again shortly for the new copy.
+        await env.DB.prepare('UPDATE cache SET exp = ? WHERE k = ?').bind(now + 120e3, key).run();
+        ctx.waitUntil(refresh().catch(() => {}));
+        old.stale = true;
+        return json(old);
+      }
     }
-    const a = await analyzeTicker(env, t);
-    if (a.error) return json(a, a.status || 500);
-    ctx.waitUntil(env.DB.prepare('INSERT OR REPLACE INTO cache (k, v, exp) VALUES (?, ?, ?)').bind(key, JSON.stringify(a), Date.now() + 900e3).run());
-    ctx.waitUntil(rememberScore(env, a).catch(() => {}));
-    return json(a);
+    const a = await refresh();
+    return a.error ? json(a, a.status || 500) : json(a);
   }
 
   const om = path.match(/^\/api\/options\/([^/]+)$/);
