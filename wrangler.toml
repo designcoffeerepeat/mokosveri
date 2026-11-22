@@ -36,3 +36,25 @@ FORM4_PER_RUN = "44"
 
 [observability]
 enabled = true
+
+# Preview deployments (pull request branches). Workers Builds runs
+# `wrangler preview` there, which needs its own bindings. These reuse the
+# production KV and D1 so previews show real data; cron does not run in previews.
+[previews.vars]
+AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+SEC_USER_AGENT = "Mokosveri Research lostbanjo@zoho.com"
+INSIDER_DAYS = "30"
+BUZZ_MAX_TICKERS = "36"
+FORM4_PER_RUN = "44"
+
+[[previews.kv_namespaces]]
+binding = "CACHE"
+id = "4cbc09df643c4e039ddc24af47f17775"
+
+[[previews.d1_databases]]
+binding = "DB"
+database_name = "mokosveri-db"
+database_id = "dd809369-37a9-45e8-9ea2-025f0bb3e0f7"
+
+[previews.ai]
+binding = "AI"

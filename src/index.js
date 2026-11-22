@@ -8,6 +8,7 @@ import { searchSymbols } from './sources/yahoo.js';
 import { optionChain } from './sources/options.js';
 import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
+import { buildSentiment } from './market.js';
 
 const BUZZ_KEY = 'buzz:v1';
 
@@ -144,6 +145,11 @@ async function handleApi(request, env, ctx, url) {
     const days = Math.min(parseInt(url.searchParams.get('days') || env.INSIDER_DAYS || '30', 10), 60);
     const r = await cached(env, `insiders:${days}`, 900, () => mergedInsiderBuys(env, days));
     return json(r);
+  }
+
+  if (path === '/api/sentiment') {
+    const r = await settle(buildSentiment(env));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
   }
 
   if (path === '/api/congress') {
