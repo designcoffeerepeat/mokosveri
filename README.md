@@ -36,3 +36,6 @@ Each stock page has six AI lenses (stress test my thesis, margin trends, earning
   then open /#/signup?code=your-secret-code. After that, make invites from the Watchlist page (admin section).
 - Optional Cloudflare Turnstile human check on login and sign up: put the site key in wrangler.toml [vars] as TURNSTILE_SITE_KEY and run `npx wrangler secret put TURNSTILE_SECRET`. It switches on only when both are set.
 - Login and sign up are rate limited per IP and per username.
+
+## Market events
+The Market events page (#/events, API /api/events) lists recent and upcoming market moving events with an impact rating, actual vs expected for released data, and a plain language note on what each could mean. Official calendars with no free API (Fed, BLS, BEA, Census, NYSE holidays, Russell, OPEC+, the federal funding deadline) are typed into `OFFICIAL` in `src/events.js` and run through `OFFICIAL_THROUGH`; extend both when agencies publish new schedules. Options expiration, VIX expiration, S&P and Nasdaq 100 rebalances, jobless claims and ISM dates are computed. Live feeds (Nasdaq economic, earnings, IPO and split calendars, Yahoo earnings dates, Treasury auctions) are optional, cached in D1, and limited per request so the page fills in over a few visits.

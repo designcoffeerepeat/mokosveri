@@ -1,0 +1,66 @@
+/* Market events page */
+.ev-next { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.ev-nx { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; text-decoration: none; border-left: 3px solid var(--warn); }
+.ev-nx b { font-size: 15px; }
+.ev-nx:hover { background: var(--surface-2); }
+.ev-nx .small:last-child { color: var(--ink-2); }
+
+.ev-bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 32px 0 4px; }
+.ev-seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.ev-seg button { font: 500 13px var(--sans); padding: 7px 12px; border: 0; background: transparent; color: var(--ink-2); cursor: pointer; }
+.ev-seg button + button { border-left: 1px solid var(--line); }
+.ev-seg button[aria-pressed='true'] { background: var(--ink); color: var(--bg); }
+.ev-sel { display: inline-flex; align-items: center; gap: 6px; }
+.ev-sel select { font: 13px var(--sans); padding: 7px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+.ev-mine { font-size: 13px; display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); cursor: pointer; }
+
+.ev-day { margin-top: 22px; }
+.ev-dh { display: flex; align-items: baseline; gap: 10px; font: 600 14px var(--sans); margin: 0 0 8px; }
+.ev-dh small { font-weight: 400; color: var(--muted); }
+.ev-day.today .ev-dh span { color: var(--warn); }
+.ev-list { overflow: hidden; }
+.ev { display: grid; grid-template-columns: 116px 1fr; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line); border-left: 3px solid transparent; transition: background 0.3s; }
+.ev:last-child { border-bottom: 0; }
+.ev.imp3 { border-left-color: var(--warn); }
+.ev.is-watch { background: color-mix(in srgb, var(--up) 5%, transparent); }
+.ev.flash { background: var(--surface-2); }
+.ev-when { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.ev-time { font: 12.5px var(--mono); color: var(--ink-2); }
+.ev-imp { font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: 0.05em; padding: 2px 8px; border-radius: 99px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+.imp3 .ev-imp, .ev-imp.i3 { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+.imp2 .ev-imp, .ev-imp.i2 { color: var(--ink); }
+.ev-body h3 { margin: 0; font-size: 15px; font-weight: 600; }
+.ev-tks { font-weight: 400; margin-left: 4px; }
+.ev-tks a { font-size: 13px; text-decoration: none; padding: 1px 6px; border-radius: 6px; background: var(--surface-2); }
+.ev-tks a:hover { text-decoration: underline; }
+.ev-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 2px; }
+.ev-watch { border-color: color-mix(in srgb, var(--up) 50%, var(--line)); color: var(--up); }
+.ev-tent { border-style: dashed; }
+.ev-detail { margin: 6px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.ev-means { margin: 8px 0 0; font-size: 13.5px; color: var(--ink-2); }
+.ev-means b { color: var(--ink); font-weight: 600; }
+.ev-result { margin: 8px 0 0; font-size: 13.5px; padding: 8px 12px; border-radius: 10px; background: var(--surface-2); }
+.ev-result.up { background: var(--up-soft); }
+.ev-result.up b { color: var(--up); }
+.ev-result.down { background: var(--down-soft); }
+.ev-result.down b { color: var(--down); }
+.ev-data { margin-top: 8px; font-size: 13px; max-width: 560px; }
+.ev-data th, .ev-data td { padding: 6px 10px 6px 0; }
+.ev-more { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.ev-more summary { cursor: pointer; }
+.ev-more p { margin: 6px 0 0; color: var(--ink-2); }
+.ev-empty p { padding: 18px; margin: 0; }
+
+.ev-legend ul { list-style: none; margin: 0; padding: 14px 18px 4px; font-size: 13.5px; }
+.ev-legend li { padding: 6px 0; display: flex; gap: 10px; align-items: baseline; }
+.ev-legend li .ev-imp { flex: none; min-width: 66px; text-align: center; }
+.ev-legend p { padding: 0 18px 14px; margin: 0; }
+.ev-src p { padding: 0 18px; margin: 0 0 12px; color: var(--ink-2); }
+
+@media (max-width: 860px) { .ev-next { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .ev { grid-template-columns: 1fr; gap: 6px; padding: 12px 14px; }
+  .ev-when { flex-direction: row; align-items: center; }
+  .ev-seg button { padding: 7px 9px; font-size: 12.5px; }
+}
+.ev-src .chip { white-space: normal; }
