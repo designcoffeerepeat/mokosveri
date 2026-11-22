@@ -222,3 +222,25 @@ td.flash-down { animation: flashDown 1.4s ease-out; }
 .pin-ext .ext-tag { margin-right: 3px; }
 .price-big .ext-line { margin-top: 4px; font: 13px var(--mono); color: var(--ink-2); }
 .price-big .ext-line .ext-tag { font-size: 10.5px; }
+
+/* Watchlist "Added" date and its since-added card */
+.wl-added { padding: 2px 0; border: 0; background: none; color: var(--ink-2); font: 13px var(--mono); white-space: nowrap; cursor: help; text-decoration: underline dotted; text-decoration-color: var(--line); text-underline-offset: 3px; touch-action: manipulation; }
+.wl-added.up-mark { text-decoration-color: var(--up); }
+.wl-added.down-mark { text-decoration-color: var(--down); }
+.wl-added:hover, .wl-added:focus-visible { color: var(--ink); }
+.wl-tip { position: fixed; z-index: 60; min-width: 180px; max-width: calc(100vw - 16px); padding: 10px 12px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); font: 12.5px/1.5 var(--sans); }
+.wl-tip[hidden] { display: none; }
+.wl-tip .tt-head { font-weight: 600; margin-bottom: 4px; display: flex; justify-content: space-between; gap: 12px; }
+.wl-tip .tt-head .muted { font-weight: 400; }
+.wl-tip-big { font: 600 18px var(--mono); margin: 2px 0 6px; }
+.wl-tip-big.up, .wl-tip .up { color: var(--up); }
+.wl-tip-big.down, .wl-tip .down { color: var(--down); }
+.wl-tip .tt-row { display: flex; justify-content: space-between; gap: 14px; }
+.wl-tip .tt-row > span { color: var(--muted); }
+.wl-tip .tt-row b { font: 500 12px var(--mono); }
+.wl-ad-sub { display: none; }
+@media (max-width: 520px) {
+  table.wl .wl-ad { display: none; }
+  .wl-ad-sub { display: block; margin-top: 1px; }
+  .wl-ad-sub .wl-added { padding: 7px 10px 7px 0; margin: -4px 0; font: 11px var(--sans); }
+}

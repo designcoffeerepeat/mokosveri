@@ -24,8 +24,37 @@ export function rememberScore(env, a) {
 export const MAX_LISTS = 10;
 
 async function listTickers(env, listId) {
-  const r = await env.DB.prepare('SELECT ticker, position, added_at FROM watchlist_items WHERE list_id = ? ORDER BY position, added_at').bind(listId).all();
+  const r = await env.DB.prepare('SELECT ticker, position, added_at, added_price FROM watchlist_items WHERE list_id = ? ORDER BY position, added_at').bind(listId).all();
   return r.results || [];
+}
+
+// Daily close in effect when a ticker was added: the last bar that opened at
+// or before the add time. Added before the open gives the prior close, added
+// later in the day gives that day's close. Returns { price, final } where
+// final is false when the bar is the newest one (today's close can still
+// move), or null when the add predates the price history we have.
+export function closeAtAdd(bars, addedAt) {
+  if (!bars || !bars.length || !addedAt) return null;
+  let i = -1;
+  for (let k = 0; k < bars.length; k++) {
+    if (bars[k].t * 1000 <= addedAt) i = k;
+    else break;
+  }
+  if (i < 0 || bars[i].c == null || !isFinite(bars[i].c)) return null;
+  return { price: bars[i].c, final: i < bars.length - 1 };
+}
+
+// Stores the price at add time for freshly added tickers. Best effort: a
+// missing quote is filled in later from the daily close.
+async function stampAddedPrices(env, listId, tickers) {
+  if (!tickers.length) return;
+  const live = await liveQuotes(env, tickers).catch(() => new Map());
+  const writes = [];
+  for (const t of tickers) {
+    const q = live.get(t);
+    if (q && q.price != null && isFinite(q.price)) writes.push(env.DB.prepare('UPDATE watchlist_items SET added_price = ? WHERE list_id = ? AND ticker = ? AND added_price IS NULL').bind(q.price, listId, t));
+  }
+  if (writes.length) await settle(env.DB.batch(writes));
 }
 
 // The user's lists, creating "My watchlist" the first time.
@@ -84,7 +113,7 @@ async function liveMeta(live) {
   return { refreshSec: refreshSeconds(live), market: marketLabel(live), at: Date.now() };
 }
 
-async function buildRows(env, items) {
+async function buildRows(env, items, listId = null) {
   const tickers = items.map((i) => i.ticker);
   const keys = [...tickers.flatMap((t) => [`chart:${t}:1y`, `score:${t}`]), 'chart:SPY:1y'];
   const [hit, buzz] = await Promise.all([cacheGetMany(env, keys), env.CACHE ? env.CACHE.get(BUZZ_KEY, 'json').catch(() => null) : null]);
@@ -106,12 +135,23 @@ async function buildRows(env, items) {
   const failed = new Set(toFetch.filter((t, i) => !fetched[i].ok));
   const spy = hit.get('chart:SPY:1y');
 
-  return items.map((it, idx) => {
+  // Backfill the price at add time from the daily close for rows that lack it.
+  const backfill = [];
+  const rows = items.map((it, idx) => {
     const t = it.ticker;
     const px = hit.get(`chart:${t}:1y`);
     const sc = hit.get(`score:${t}`);
     const bz = buzzMap.get(t);
     const row = { ticker: t, position: idx, addedAt: it.added_at, name: (sc && sc.name) || (bz && bz.name) || null };
+    if (it.added_price != null) row.addedPrice = it.added_price;
+    else if (it.added_at && px && px.bars) {
+      const c = closeAtAdd(px.bars, it.added_at);
+      if (c) {
+        row.addedPrice = c.price;
+        row.addedPriceFrom = 'close';
+        if (c.final && listId != null) backfill.push(env.DB.prepare('UPDATE watchlist_items SET added_price = ? WHERE list_id = ? AND ticker = ? AND added_price IS NULL').bind(c.price, listId, t));
+      }
+    }
     if (!px || !px.bars || px.bars.length < 2) {
       row.pending = !failed.has(t);
       row.error = failed.has(t) ? 'No price data' : null;
@@ -134,6 +174,8 @@ async function buildRows(env, items) {
     }
     return row;
   });
+  if (backfill.length) await settle(env.DB.batch(backfill));
+  return rows;
 }
 
 export const MAX_PINS = 6;
@@ -210,7 +252,7 @@ export async function handleWatchlist(request, env, path) {
     const { lists, list } = await pickList(env, u.id, qs.get('list'));
     if (!list) return notFound();
     const items = await listTickers(env, list.id);
-    const [rows, live] = await Promise.all([buildRows(env, items), liveQuotes(env, items.map((i) => i.ticker)).catch(() => new Map())]);
+    const [rows, live] = await Promise.all([buildRows(env, items, list.id), liveQuotes(env, items.map((i) => i.ticker)).catch(() => new Map())]);
     return json({ list, lists, items: overlayLive(rows, live), max: MAX_WATCH, ...(await liveMeta(live)) });
   }
 
@@ -296,7 +338,7 @@ export async function handleWatchlist(request, env, path) {
     if (!r.meta.changes) {
       const exists = await env.DB.prepare('SELECT 1 AS x FROM watchlist_items WHERE list_id = ? AND ticker = ?').bind(list.id, t).first();
       if (!exists) return json({ error: `That list is full (${MAX_WATCH} tickers).` }, 400);
-    }
+    } else await stampAddedPrices(env, list.id, [t]);
     return json({ ok: true, ticker: t, list: list.id });
   }
 
@@ -343,6 +385,7 @@ export async function handleWatchlist(request, env, path) {
       const now = Date.now();
       const start = current.reduce((m, i) => Math.max(m, i.position), -1) + 1;
       await env.DB.batch(add.map((t, i) => env.DB.prepare('INSERT OR IGNORE INTO watchlist_items (list_id, ticker, position, added_at) VALUES (?, ?, ?, ?)').bind(list.id, t, start + i, now + i)));
+      await stampAddedPrices(env, list.id, add);
     }
     return json({ list: { id: list.id, name: list.name }, added: add, already, overCap, invalid, max: MAX_WATCH });
   }
