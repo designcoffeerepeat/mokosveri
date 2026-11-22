@@ -57,6 +57,11 @@
 .ox-range label { display: flex; align-items: center; gap: 10px; font-weight: 500; color: var(--ink-2); }
 .ox-card .ox-range input[type='range'] { width: 220px; height: 24px; padding: 0; border: 0; accent-color: var(--ink); background: none; }
 @media (max-width: 520px) { .ox-card .ox-range input[type='range'] { width: 150px; } }
+.ox-pxset { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-left: auto; }
+.ox-pxset label { gap: 6px; font-weight: 500; }
+.ox-card .ox-pxset input { width: 96px; font: 500 13px var(--mono); padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+.ox-pxreset { font: 600 12.5px var(--sans); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; }
+@media (max-width: 520px) { .ox-pxset { margin-left: 0; } }
 
 .ox-heat { font-size: 12px; }
 .ox-heat th, .ox-heat td { padding: 5px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }

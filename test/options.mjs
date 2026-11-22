@@ -48,3 +48,18 @@ assert.equal(chain.calls[0].iv, 0.25);
 assert.throws(() => parseChain({ optionChain: { result: [] } }));
 
 console.log('options tests passed');
+
+// Custom stock price bounds for the P/L table and chart
+import { priceBounds } from '../public/options.js';
+const auto = priceBounds(100, 0.3, 0.25);
+assert.ok(auto.lo < 100 && auto.hi > 100 && !auto.custom);
+assert.equal(priceBounds(100, 0.3, 0.25, 20).hi, 120, 'slider percent');
+const up = priceBounds(100, 0.3, 0.25, 0, '', '400');
+assert.equal(up.hi, 400, 'typed high price');
+assert.ok(up.custom && up.lo < 100);
+assert.deepEqual([priceBounds(100, 0.3, 0.25, 0, '150', '300').lo, priceBounds(100, 0.3, 0.25, 0, '150', '300').hi], [150, 300]);
+const swapped = priceBounds(100, 0.3, 0.25, 0, '300', '150');
+assert.ok(swapped.lo === 150 && swapped.hi === 300, 'low and high typed backwards');
+const lowOnly = priceBounds(100, 0.3, 0.25, 0, '250', '');
+assert.ok(lowOnly.hi > 250, 'low above the price still gets a window');
+console.log('price bounds tests passed');
