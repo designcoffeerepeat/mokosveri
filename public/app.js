@@ -4,6 +4,8 @@ import { mountWatchButton } from './session.js';
 const CRYPTO_LONG = /^(BTC|ETH|SOL|XRP|BNB|DOGE|ADA|LTC)-USD$/;
 // AI lenses read company filings, so they show for stocks only (not funds, indices or coins).
 const lensOk = (h) => h.type === 'Stock' && !/^[A-Z0-9]+-(USD|EUR|GBP|USDT)$/.test(h.ticker);
+// Listed options exist for stocks and funds, not indices or coins.
+const chainOk = (h) => (h.type === 'Stock' || h.type === 'ETF') && !/^[A-Z0-9]+-(USD|EUR|GBP|USDT)$/.test(h.ticker);
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 
@@ -282,6 +284,7 @@ function paintShell(h) {
     <h2 class="section">Price chart</h2>
     <div class="card chart-box pc" id="chartBox"></div>
     ${lensOk(h) ? '<div id="lensWrap"><h2 class="section">AI lenses <small class="muted">tap a question, answered from real filings and prices</small></h2><div id="lensBox"></div></div>' : ''}
+    ${chainOk(h) ? '<div id="chainWrap"><h2 class="section">Options chain <small class="muted">calls and puts by strike, tap one to model it</small></h2><div id="chainBox"></div></div>' : ''}
     ${CRYPTO_LONG.test(h.ticker) ? '<h2 class="section">Long-term models <small class="muted">power law and rainbow</small></h2><div id="cryptoBox"></div>' : ''}
     <div id="tkRest">${h.type === 'Index' ? skel(3) : `${skel(5)}${skel(4)}`}</div>
   `;
@@ -291,6 +294,8 @@ function paintShell(h) {
   import('/chart.js').then((c) => c.mountChart($('#chartBox'), h.ticker, api));
   // Lenses only fetch when a tile is tapped, so mounting them costs nothing.
   if (lensOk(h)) import('/lenses.js').then((l) => $('#lensBox') && l.mountLenses($('#lensBox'), h.ticker, api));
+  // The chain waits until it scrolls near the screen before fetching anything.
+  if (chainOk(h)) import('/chain.js').then((c) => $('#chainBox') && c.mountChain($('#chainBox'), h.ticker, api));
   if (CRYPTO_LONG.test(h.ticker)) import('/cryptolong.js').then((c) => c.mountCryptoLong($('#cryptoBox'), h.ticker, api));
 }
 
@@ -437,6 +442,7 @@ function fillAnalysis(a) {
 
   // The quick snapshot can mistake a fund for a stock; lenses are for stocks.
   if (!lensOk(a) && $('#lensWrap')) $('#lensWrap').remove();
+  if (!chainOk(a) && $('#chainWrap')) $('#chainWrap').remove();
   $('#tkName').textContent = a.name;
   $('#tkSub').innerHTML = subLine(a);
   $('#tkTop').innerHTML = `

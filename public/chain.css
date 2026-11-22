@@ -1,0 +1,39 @@
+/* Option chain on the ticker page (public/chain.js). */
+.oc-card { padding: 0; overflow: hidden; }
+.oc-card.busy .oc-wrap { opacity: 0.5; transition: opacity 0.15s; }
+.oc-card .loading-note, .oc-note { margin: 0; padding: 18px 20px; }
+.oc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.oc-exp { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-right: auto; }
+.oc-exp select { font: 500 13px var(--sans); padding: 6px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); max-width: 100%; }
+.oc-seg { display: inline-flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); }
+.oc-seg button { border: 0; background: transparent; color: var(--ink-2); font: 500 12.5px var(--sans); padding: 5px 10px; border-radius: 7px; cursor: pointer; }
+.oc-seg button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); font-weight: 600; }
+
+.oc-wrap { max-height: 560px; overflow: auto; }
+.oc-tbl { font-size: 12.5px; }
+.oc-tbl th, .oc-tbl td { padding: 7px 10px; vertical-align: middle; }
+.oc-tbl thead { position: sticky; top: 0; z-index: 1; }
+.oc-tbl thead th { background: var(--surface); }
+.oc-tbl .oc-h1 th { font: 600 11.5px var(--sans); text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-2); text-align: center; }
+.oc-tbl td.oc-c, .oc-tbl td.oc-p { cursor: pointer; }
+.oc-tbl tbody tr:hover td.oc-c, .oc-tbl tbody tr:hover td.oc-p { background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.oc-tbl td.itm { background: color-mix(in srgb, var(--up) 9%, transparent); }
+.oc-tbl tbody tr:hover td.itm { background: color-mix(in srgb, var(--up) 15%, transparent); }
+.oc-tbl .oc-k { text-align: center; font: 600 13px var(--mono); background: var(--surface-2); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.oc-tbl thead th.oc-k { background: var(--surface-2); }
+.oc-gocol { width: 28px; padding: 4px 6px !important; text-align: center; }
+.oc-go { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; color: var(--muted); }
+.oc-go:hover, .oc-go:focus-visible { color: var(--ink); background: var(--surface-2); outline: none; }
+.oc-px td { padding: 0 !important; border-bottom: 0; }
+.oc-px span { display: block; position: relative; text-align: center; font: 600 11px/18px var(--mono); color: var(--bg); background: var(--ink); }
+
+.oc-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 16px; font-size: 12px; border-top: 1px solid var(--line); }
+.oc-foot .muted { flex: 1 1 260px; }
+.oc-more, .oc-retry { font: 600 12.5px var(--sans); padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); cursor: pointer; }
+
+@media (max-width: 720px) {
+  .oc-bar { padding: 12px; }
+  .oc-exp { margin-right: 0; flex-basis: 100%; }
+  .oc-exp select { flex: 1; }
+  .oc-tbl th, .oc-tbl td { padding: 6px 8px; }
+}
