@@ -115,5 +115,6 @@ assert.ok(s3.investors.filter((i) => !i.pending).length >= 9);
 
 // no em or en dashes anywhere in user facing copy
 const text = JSON.stringify(s3);
-assert.ok(!/[—–]/.test(text), 'no em or en dashes');
+assert.ok(!/[\u2014\u2013]/.test(text), 'no em or en dashes');
 console.log('\nSentiment checks passed.');
+if (process.env.DUMP_SENTIMENT) (await import('node:fs')).writeFileSync(process.env.DUMP_SENTIMENT, JSON.stringify(s3));

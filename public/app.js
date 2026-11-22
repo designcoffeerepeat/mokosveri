@@ -441,6 +441,7 @@ function route() {
   window.scrollTo(0, 0);
   if (m) renderTicker(decodeURIComponent(m[1]).toUpperCase());
   else if (/^#\/options\b/.test(location.hash)) import('/options.js').then((o) => o.renderOptions(app, api));
+  else if (/^#\/sentiment\b/.test(location.hash)) import('/sentiment.js').then((o) => o.renderSentiment(app, api));
   else if (/^#\/login\b/.test(location.hash)) import('/account.js').then((m) => m.renderLogin(app));
   else if (/^#\/signup\b/.test(location.hash)) import('/account.js').then((m) => m.renderSignup(app));
   else if (/^#\/(account|watchlist)\b/.test(location.hash)) import('/account.js').then((m) => m.renderAccount(app));
