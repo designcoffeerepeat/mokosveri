@@ -1,5 +1,5 @@
 // Mokosveri: stock and ETF research. Cloudflare Worker entry point.
-import { json, cleanTicker, cached, settle, INDEX_ALIASES, INDEX_NAMES } from './util.js';
+import { json, cleanTicker, cached, settle, isIndex, INDEX_ALIASES, INDEX_NAMES } from './util.js';
 import { analyzeTicker } from './analyze.js';
 import { tickerSnapshot } from './snapshot.js';
 import { buildBuzz, mergedInsiderBuys } from './buzz.js';
@@ -12,6 +12,8 @@ import { cryptoLong } from './sources/cryptolong.js';
 import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
+import { handleLens, LENS_IDS } from './lenses.js';
+import { rateLimit } from './auth.js';
 
 const BUZZ_KEY = 'buzz:v1';
 // A ticker analysis counts as fresh for 15 minutes and is still shown, while a
@@ -135,6 +137,17 @@ async function handleApi(request, env, ctx, url) {
     }
     const a = await refresh();
     return a.error ? json(a, a.status || 500) : json(a);
+  }
+
+  // AI lenses: one framework at a time, run when the reader taps it.
+  const lm = path.match(/^\/api\/lens\/([^/]+)\/([a-z]+)$/);
+  if (lm) {
+    const t = cleanTicker(decodeURIComponent(lm[1]));
+    if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
+    if (!LENS_IDS.includes(lm[2])) return json({ error: 'Unknown lens.' }, 404);
+    if (isIndex(t)) return json({ error: 'AI lenses are for individual stocks.' }, 400);
+    const r = await handleLens(request, env, ctx, url, t, lm[2], rateLimit);
+    return json(r.body, r.status || 200);
   }
 
   const om = path.match(/^\/api\/options\/([^/]+)$/);

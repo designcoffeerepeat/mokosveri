@@ -75,22 +75,40 @@ const MODULES = [
 ].join(',');
 
 export async function quoteSummary(env, ticker) {
-  return cached(env, `qs:${ticker}`, 1800, async () => {
-    const sym = encodeURIComponent(yahooSymbol(ticker));
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const { crumb, cookie } = await getCrumb(env, attempt > 0);
-      const r = await fetchWithTimeout(
-        `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${sym}?modules=${MODULES}&crumb=${encodeURIComponent(crumb)}`,
-        { headers: { ...H, Cookie: cookie } }
-      );
-      if (r.status === 401 || r.status === 403) continue;
-      if (!r.ok) throw new Error(`Yahoo summary HTTP ${r.status}`);
-      const d = await r.json();
-      const res = d.quoteSummary && d.quoteSummary.result && d.quoteSummary.result[0];
-      if (!res) throw new Error('Yahoo summary empty');
-      return res;
-    }
-    throw new Error('Yahoo summary unauthorized');
+  return cached(env, `qs:${ticker}`, 1800, () => fetchSummary(env, ticker, MODULES));
+}
+
+// Quote summary with a custom module list (earnings history, estimate trends,
+// a lighter set for peers). `tag` keeps each module set in its own cache slot.
+export async function quoteSummaryModules(env, ticker, modules, tag, ttl = 3600) {
+  return cached(env, `qsm:${tag}:${ticker}`, ttl, () => fetchSummary(env, ticker, modules));
+}
+
+async function fetchSummary(env, ticker, modules) {
+  const sym = encodeURIComponent(yahooSymbol(ticker));
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { crumb, cookie } = await getCrumb(env, attempt > 0);
+    const r = await fetchWithTimeout(
+      `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${sym}?modules=${modules}&crumb=${encodeURIComponent(crumb)}`,
+      { headers: { ...H, Cookie: cookie } }
+    );
+    if (r.status === 401 || r.status === 403) continue;
+    if (!r.ok) throw new Error(`Yahoo summary HTTP ${r.status}`);
+    const d = await r.json();
+    const res = d.quoteSummary && d.quoteSummary.result && d.quoteSummary.result[0];
+    if (!res) throw new Error('Yahoo summary empty');
+    return res;
+  }
+  throw new Error('Yahoo summary unauthorized');
+}
+
+// Similar companies Yahoo shows under "People also watch". Used as the
+// closest publicly traded competitors.
+export async function similarSymbols(env, ticker) {
+  return cached(env, `similar:${ticker}`, 86400, async () => {
+    const d = await getJSON(`https://query2.finance.yahoo.com/v6/finance/recommendationsbysymbol/${encodeURIComponent(yahooSymbol(ticker))}`, { headers: H });
+    const r = d.finance && d.finance.result && d.finance.result[0];
+    return ((r && r.recommendedSymbols) || []).map((x) => cleanTicker(x.symbol)).filter((x) => x && x !== ticker);
   });
 }
 
