@@ -8,6 +8,7 @@ import { congressRecent } from './sources/congress.js';
 import { searchSymbols } from './sources/yahoo.js';
 import { optionChain } from './sources/options.js';
 import { priceHistory, RANGES } from './sources/history.js';
+import { cryptoLong } from './sources/cryptolong.js';
 import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
@@ -152,6 +153,16 @@ async function handleApi(request, env, ctx, url) {
     if (!RANGES[range]) return json({ error: 'Unknown chart range.' }, 400);
     const r = await settle(priceHistory(env, t, range));
     return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
+  // Power law and rainbow models for major crypto (BTC-USD, ETH-USD...).
+  const cm = path.match(/^\/api\/cryptolong\/([^/]+)$/);
+  if (cm) {
+    const t = cleanTicker(decodeURIComponent(cm[1]));
+    if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
+    const r = await settle(cryptoLong(env, t));
+    if (!r.ok) return json({ error: r.error }, 502);
+    return r.value.error ? json(r.value, r.value.status || 500) : json(r.value);
   }
 
   if (path === '/api/search') {
