@@ -18,11 +18,49 @@ const extTitle = (x) => {
 // Second line under the price and today cells for pre-market or after hours trading.
 const extPx = (x) => (x ? `<div class="ext" title="${esc(extTitle(x))}"><span class="ext-tag ext-${x.session}">${EXT_TAG[x.session]}</span>${fmtNum(x.price)}</div>` : '');
 const extCh = (x) => (x ? `<div class="ext ${cls(x.changePct)}" title="${esc(extTitle(x))}">${fmtPct(x.changePct, 2)}</div>` : '');
-// Sort value for the "Pre/After %" choice.
+// Sort values for the "Pre/After %" and "Since added" choices.
 const withExt = (r) => {
   r.extPct = r.ext ? r.ext.changePct : null;
+  r.sinceAdded = r.addedPrice > 0 && r.price != null && isFinite(r.price) ? (r.price / r.addedPrice - 1) * 100 : null;
   return r;
 };
+const fmtDay = (ms, long = false) => {
+  const d = new Date(ms);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString('en-US', long || !sameYear ? { month: 'short', day: 'numeric', year: 'numeric' } : { month: 'short', day: 'numeric' });
+};
+// Compact date for the phone layout: 11/19, or 11/19/25 for another year.
+const shortDay = (ms) => {
+  const d = new Date(ms);
+  const md = `${d.getMonth() + 1}/${d.getDate()}`;
+  return d.getFullYear() === new Date().getFullYear() ? md : `${md}/${String(d.getFullYear()).slice(2)}`;
+};
+const daysAgo = (ms) => {
+  const n = Math.floor((Date.now() - ms) / 864e5);
+  return n < 1 ? 'today' : n === 1 ? '1 day ago' : `${n} days ago`;
+};
+// The Added cell: the date, plus a hover or tap card with the move since then.
+const addedCell = (r, short = false) =>
+  r.addedAt
+    ? `<button type="button" class="wl-added${r.sinceAdded != null ? ` ${cls(r.sinceAdded)}-mark` : ''}" aria-label="${esc(addedText(r))}">${short ? shortDay(r.addedAt) : fmtDay(r.addedAt)}</button>`
+    : '';
+function addedText(r) {
+  const when = `Added ${fmtDay(r.addedAt, true)} (${daysAgo(r.addedAt)}).`;
+  if (r.sinceAdded == null) return `${when} The price when it was added is not available yet.`;
+  const diff = r.price - r.addedPrice;
+  return `${when} ${r.sinceAdded >= 0 ? 'Up' : 'Down'} ${fmtPct(Math.abs(r.sinceAdded), 2).replace('+', '')} since then, from ${fmtNum(r.addedPrice)} to ${fmtNum(r.price)} (${diff >= 0 ? '+' : '-'}${fmtNum(Math.abs(diff))}).`;
+}
+function addedTip(r) {
+  const head = `<div class="tt-head">Added ${esc(fmtDay(r.addedAt, true))} <span class="muted">${esc(daysAgo(r.addedAt))}</span></div>`;
+  if (r.sinceAdded == null) return `${head}<div class="muted">Price when added is not available yet.</div>`;
+  const diff = r.price - r.addedPrice;
+  const dir = r.sinceAdded > 0 ? 'Up' : r.sinceAdded < 0 ? 'Down' : 'Flat';
+  return `${head}
+    <div class="wl-tip-big ${cls(r.sinceAdded)}">${dir} ${fmtPct(Math.abs(r.sinceAdded), 2).replace('+', '')}</div>
+    <div class="tt-row"><span>Then</span><b>${fmtNum(r.addedPrice)}</b></div>
+    <div class="tt-row"><span>Now</span><b>${fmtNum(r.price)}</b></div>
+    <div class="tt-row"><span>Change</span><b class="${cls(diff)}">${diff > 0 ? '+' : diff < 0 ? '-' : ''}${fmtNum(Math.abs(diff))}</b></div>`;
+}
 const ago = (ms) => {
   if (!ms) return 'never';
   const m = Math.round((Date.now() - ms) / 60000);
@@ -51,6 +89,7 @@ const COLS = [
   { key: 'ret1m', label: '1M', num: true, cls: 'wl-m' },
   { key: 'ret1y', label: '1Y', num: true, cls: 'wl-y' },
   { key: 'score', label: 'Score', num: true },
+  { key: 'addedAt', label: 'Added', num: true, cls: 'wl-ad' },
 ];
 
 // Sort choice is remembered per list.
@@ -58,7 +97,7 @@ const sortKey = (id) => `wlSort:${id}`;
 function readSort(id) {
   try {
     const s = JSON.parse(localStorage.getItem(sortKey(id)) || localStorage.getItem('wlSort'));
-    if (s && (s.key === 'custom' || s.key === 'extPct' || COLS.some((c) => c.key === s.key))) return s;
+    if (s && (s.key === 'custom' || s.key === 'extPct' || s.key === 'sinceAdded' || COLS.some((c) => c.key === s.key))) return s;
   } catch {}
   return { key: 'custom', dir: 1 };
 }
@@ -94,7 +133,7 @@ export function mountWatchTable(root, listId, opts = {}) {
       <div class="wl-bar">
         <form class="wl-add" autocomplete="off"><input type="text" maxlength="12" placeholder="Add a ticker, e.g. AAPL" aria-label="Add a ticker to this watchlist" spellcheck="false" /><button type="submit">Add</button></form>
         <div class="wl-live muted small" role="status"></div>
-        <label class="wl-sort"><span class="muted small">Sort</span><select>${['<option value="custom">My order</option>', ...COLS.map((c) => `<option value="${c.key}">${c.label}</option>`), '<option value="extPct">Pre/After %</option>'].join('')}</select><button type="button" class="btn-ghost sm wl-dir" aria-label="Flip sort direction" title="Flip sort direction"></button></label>
+        <label class="wl-sort"><span class="muted small">Sort</span><select>${['<option value="custom">My order</option>', ...COLS.map((c) => `<option value="${c.key}">${c.label}</option>`), '<option value="extPct">Pre/After %</option>', '<option value="sinceAdded">Since added %</option>'].join('')}</select><button type="button" class="btn-ghost sm wl-dir" aria-label="Flip sort direction" title="Flip sort direction"></button></label>
       </div>
       <div class="auth-err wl-err" role="alert"></div>
       <div class="tbl-wrap wl-tbl"><div class="loading"><div class="spinner"></div>Loading…</div></div>
@@ -126,7 +165,7 @@ export function mountWatchTable(root, listId, opts = {}) {
     $('.wl-dir').textContent = sort.key === 'custom' ? '' : sort.dir > 0 ? 'Asc' : 'Desc';
     $('.wl-dir').hidden = sort.key === 'custom';
     $('.wl-foot').textContent = items.length
-      ? `${items.length} of ${max} tickers. ${sort.key === 'custom' ? 'Drag the handle (or focus it and use the arrow keys) to reorder.' : 'Click a column again to flip it. Choose "My order" to drag and reorder.'} Scores marked ~ are quick estimates.`
+      ? `${items.length} of ${max} tickers. ${sort.key === 'custom' ? 'Drag the handle (or focus it and use the arrow keys) to reorder.' : 'Click a column again to flip it. Choose "My order" to drag and reorder.'} Scores marked ~ are quick estimates. Hover or tap an Added date to see the move since then.`
       : '';
     if (!items.length) {
       table.innerHTML = '<div class="empty">This list is empty. Add a ticker above, or use "Add to watchlist" on any ticker page.</div>';
@@ -143,19 +182,89 @@ export function mountWatchTable(root, listId, opts = {}) {
           const est = r.scoreSource && r.scoreSource !== 'full';
           return `<tr data-t="${esc(r.ticker)}">
             <td class="wl-h">${custom ? `<button type="button" class="handle" aria-label="Move ${esc(r.ticker)}. Use arrow keys." title="Drag to reorder">⋮⋮</button>` : ''}</td>
-            <td class="mono"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a></td>
+            <td class="mono"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a><div class="wl-ad-sub" data-a="short">${addedCell(r, true)}</div></td>
             <td class="wl-name">${esc(r.name || '')}</td>
             <td class="num" data-c="price">${r.pending ? '<span class="muted">loading</span>' : r.error ? '<span class="muted">n/a</span>' : `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`}</td>
             <td class="num" data-c="chg">${r.price != null ? `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}` : ''}</td>
             <td class="num wl-m ${cls(r.ret1m)}">${r.price != null ? fmtPct(r.ret1m) : ''}</td>
             <td class="num wl-y ${cls(r.ret1y)}">${r.price != null ? fmtPct(r.ret1y) : ''}</td>
             <td class="num">${r.score != null ? `<span class="pill ${pillCls(r.score)} wl-pill" title="${esc(scoreTitle(r))}">${est ? '~' : ''}${r.score > 0 ? '+' : ''}${r.score}</span>` : ''}</td>
+            <td class="num wl-ad" data-a>${addedCell(r)}</td>
             <td class="wl-sp">${spark(r.spark)}</td>
             <td><button type="button" class="rm" aria-label="Remove ${esc(r.ticker)}" title="Remove">&times;</button></td>
           </tr>`;
         })
         .join('')}</tbody></table>`;
+    refreshTip();
   }
+
+  // ---------- added date card (hover on desktop, tap on touch) ----------
+  let tip = null;
+  let tipFor = null; // ticker the card is showing
+  let tipPinned = false; // opened by a tap or click, stays until dismissed
+  function showTip(btn, pinned) {
+    const t = btn.closest('tr').dataset.t;
+    const r = items.find((x) => x.ticker === t);
+    if (!r) return;
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.className = 'wl-tip';
+      tip.setAttribute('role', 'tooltip');
+      document.body.appendChild(tip);
+    }
+    tipFor = t;
+    tipPinned = pinned;
+    tip.innerHTML = addedTip(r);
+    tip.hidden = false;
+    const b = btn.getBoundingClientRect();
+    const w = tip.offsetWidth;
+    const h = tip.offsetHeight;
+    const left = Math.max(8, Math.min(window.innerWidth - w - 8, b.left + b.width / 2 - w / 2));
+    const below = b.bottom + 8 + h <= window.innerHeight;
+    tip.style.left = `${left}px`;
+    tip.style.top = `${below ? b.bottom + 8 : Math.max(8, b.top - h - 8)}px`;
+  }
+  function hideTip() {
+    if (tip) tip.hidden = true;
+    tipFor = null;
+    tipPinned = false;
+  }
+  function refreshTip() {
+    if (!tip || tip.hidden || !tipFor) return;
+    const btn = [...table.querySelectorAll(`tr[data-t="${CSS.escape(tipFor)}"] .wl-added`)].find((b) => b.offsetParent);
+    if (btn) showTip(btn, tipPinned);
+    else hideTip();
+  }
+  table.addEventListener('pointerover', (e) => {
+    const btn = e.target.closest('.wl-added');
+    if (btn && e.pointerType === 'mouse' && !tipPinned) showTip(btn, false);
+  });
+  table.addEventListener('pointerout', (e) => {
+    const btn = e.target.closest('.wl-added');
+    if (btn && e.pointerType === 'mouse' && !tipPinned && !btn.contains(e.relatedTarget)) hideTip();
+  });
+  table.addEventListener('focusin', (e) => {
+    const btn = e.target.closest('.wl-added');
+    if (btn && !tipPinned) showTip(btn, false);
+  });
+  table.addEventListener('focusout', (e) => {
+    if (e.target.closest('.wl-added') && !tipPinned) hideTip();
+  });
+  const onDocDown = (e) => {
+    if (!alive()) {
+      document.removeEventListener('pointerdown', onDocDown);
+      document.removeEventListener('keydown', onEsc);
+      window.removeEventListener('scroll', onScroll, true);
+      if (tip) tip.remove();
+      return;
+    }
+    if (tipPinned && !e.target.closest('.wl-added') && !(tip && tip.contains(e.target))) hideTip();
+  };
+  const onEsc = (e) => e.key === 'Escape' && hideTip();
+  const onScroll = () => tip && !tip.hidden && hideTip();
+  document.addEventListener('pointerdown', onDocDown);
+  document.addEventListener('keydown', onEsc);
+  window.addEventListener('scroll', onScroll, true);
 
   // ---------- live prices ----------
   function paintLive() {
@@ -192,14 +301,16 @@ export function mountWatchTable(root, listId, opts = {}) {
       r.pending = false;
       r.error = null;
     }
-    if (!dragging && (sort.key === 'price' || sort.key === 'change1d' || sort.key === 'extPct')) paint();
+    if (!dragging && (sort.key === 'price' || sort.key === 'change1d' || sort.key === 'extPct' || sort.key === 'sinceAdded')) paint();
     else
       for (const r of items) {
         const tr = table.querySelector(`tr[data-t="${CSS.escape(r.ticker)}"]`);
         if (!tr || r.price == null) continue;
         tr.querySelector('[data-c="price"]').innerHTML = `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`;
         tr.querySelector('[data-c="chg"]').innerHTML = `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}`;
+        for (const a of tr.querySelectorAll('[data-a]')) a.innerHTML = addedCell(r, a.dataset.a === 'short');
       }
+    refreshTip();
     paintLive();
     for (const [t, up] of changed) flash(t, up);
   }
@@ -288,6 +399,13 @@ export function mountWatchTable(root, listId, opts = {}) {
       else sort = { key: 'custom', dir: 1 };
       writeSort(listId, sort);
       paint();
+      return;
+    }
+    const ad = e.target.closest('.wl-added');
+    if (ad) {
+      const t = ad.closest('tr').dataset.t;
+      if (tipPinned && tipFor === t) hideTip();
+      else showTip(ad, true);
       return;
     }
     const rm = e.target.closest('.rm');
