@@ -179,9 +179,9 @@ assert.ok(html.includes('href="#/t/NVDA"'));
 assert.ok(!/<script/i.test(html));
 
 // --- no em or en dashes in data, rendered copy or source files
-assert.ok(!/[—–]/.test(JSON.stringify(d)), 'no dashes in data');
-assert.ok(!/[—–]/.test(html), 'no dashes in html');
-for (const f of ['src/events.js', 'public/events.js', 'public/events.css']) assert.ok(!/[—–]/.test(readFileSync(new URL('../' + f, import.meta.url), 'utf8')), `no dashes in ${f}`);
+assert.ok(!/[\u2014\u2013]/.test(JSON.stringify(d)), 'no dashes in data');
+assert.ok(!/[\u2014\u2013]/.test(html), 'no dashes in html');
+for (const f of ['src/events.js', 'public/events.js', 'public/events.css']) assert.ok(!/[\u2014\u2013]/.test(readFileSync(new URL('../' + f, import.meta.url), 'utf8')), `no dashes in ${f}`);
 
 console.log(`${d.events.length} events from ${d.from} to ${d.to}; ${up.length} upcoming at medium or high impact.`);
 console.log('Events checks passed.');
