@@ -73,7 +73,9 @@ async function refresh(tries = 0) {
       const moved = [];
       for (const q of d.items) {
         const old = quotes.get(q.ticker);
-        if (old && old.price != null && q.price != null && old.price !== q.price) moved.push([q.ticker, q.price > old.price]);
+        const was = old && (old.ext ? old.ext.price : old.price);
+        const now = q.ext ? q.ext.price : q.price;
+        if (was != null && now != null && was !== now) moved.push([q.ticker, now > was]);
         quotes.set(q.ticker, q);
       }
       if (d.refreshSec) every = d.refreshSec;
@@ -99,8 +101,12 @@ const pct = (v) => (v == null || !isFinite(v) ? '' : `${v > 0 ? '+' : ''}${v.toF
 function chip(t) {
   const q = quotes.get(t) || {};
   const c = q.change1d > 0 ? 'up' : q.change1d < 0 ? 'down' : '';
-  const body = q.price != null ? `<span class="pin-px">${fmt(q.price)}</span><span class="pin-ch ${c}">${pct(q.change1d)}</span>` : `<span class="pin-px muted">${q.error ? 'n/a' : '...'}</span>`;
-  return `<a class="pin" data-t="${esc(t)}" href="#/t/${encodeURIComponent(t)}" title="${esc(q.name || t)}"><b>${esc(t)}</b>${body}</a>`;
+  const x = q.ext;
+  const xc = x ? (x.changePct > 0 ? 'up' : x.changePct < 0 ? 'down' : '') : '';
+  const ext = x ? `<span class="pin-ext"><span class="ext-tag ext-${x.session}">${x.session === 'pre' ? 'Pre' : 'AH'}</span><span class="${xc}">${pct(x.changePct)}</span></span>` : '';
+  const body = q.price != null ? `<span class="pin-px">${fmt(q.price)}</span><span class="pin-ch ${c}">${pct(q.change1d)}</span>${ext}` : `<span class="pin-px muted">${q.error ? 'n/a' : '...'}</span>`;
+  const title = x ? `${q.name || t}. ${x.session === 'pre' ? 'Pre-market' : 'After hours'} ${fmt(x.price)} (${pct(x.changePct)} vs the last close)` : q.name || t;
+  return `<a class="pin" data-t="${esc(t)}" href="#/t/${encodeURIComponent(t)}" title="${esc(title)}"><b>${esc(t)}</b>${body}</a>`;
 }
 
 function render() {
