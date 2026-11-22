@@ -604,7 +604,7 @@ function render() {
 }
 
 // ---------- data ----------
-async function loadTicker(t, date = null) {
+async function loadTicker(t, date = null, preset = null) {
   t = String(t || '').trim().toUpperCase().replace(/^\$/, '');
   if (!t) return;
   S.loading = true;
@@ -631,7 +631,13 @@ async function loadTicker(t, date = null) {
       if (!S.expiry || S.expiry < Date.now()) S.expiry = nextFridayAfter(30);
       S.chainNote = `${S.ticker}${S.name ? ` (${S.name})` : ''}: $${fmt(S.price)}. Option chain unavailable right now, so prices are estimated at ${S.defaultIv}% volatility. Enter real premiums from your broker for accurate results.`;
     }
-    if (changedTicker || !date) buildLegs();
+    if (preset) {
+      // Exactly the contract that was tapped, priced from this chain.
+      S.strat = preset.strat;
+      S.dateIdx = 0;
+      const qty = S.legs.find((l) => !l.stock)?.qty || 1;
+      S.legs = [{ side: preset.side, type: preset.type, strike: preset.strike, qty, premium: marketPremium(preset.type, preset.strike), edited: false }];
+    } else if (changedTicker || !date) buildLegs();
     else {
       // New expiration: keep the structure, snap strikes to this chain, refresh prices
       const strikes = strikeList();
@@ -784,8 +790,23 @@ export function renderOptions(appEl, apiFn) {
     });
     bound = true;
   }
+  const preset = parsePreset(location.hash);
   const m = location.hash.match(/[?&]t=([^&]+)/);
   const t = m ? decodeURIComponent(m[1]).toUpperCase() : S.ticker || 'SPY';
   render();
-  if (t !== S.ticker || !S.price) loadTicker(t);
+  if (preset) loadTicker(t, preset.exp, preset);
+  else if (t !== S.ticker || !S.price) loadTicker(t);
+}
+
+// A contract linked from the option chain on a stock page:
+// #/options?t=AAPL&exp=1766102400&k=190&type=C&side=1
+export function parsePreset(hash) {
+  const q = new URLSearchParams(String(hash || '').split('?')[1] || '');
+  const exp = q.get('exp');
+  const k = parseFloat(q.get('k'));
+  const type = (q.get('type') || '').toUpperCase();
+  if (!/^\d{9,11}$/.test(exp || '') || !(k > 0) || !['C', 'P'].includes(type)) return null;
+  const side = q.get('side') === '-1' ? -1 : 1;
+  const strat = side === 1 ? (type === 'C' ? 'long_call' : 'long_put') : type === 'C' ? 'short_call' : 'short_put';
+  return { exp, strike: k, type, side, strat };
 }

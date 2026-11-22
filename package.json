@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "node test/run.mjs && node test/options.mjs && node test/sentiment.mjs && node test/extended.mjs && node test/chart.mjs && node test/cryptolong.mjs && node test/watchadded.mjs && node test/lenses.mjs",
+    "test": "node test/run.mjs && node test/options.mjs && node test/sentiment.mjs && node test/extended.mjs && node test/chart.mjs && node test/cryptolong.mjs && node test/watchadded.mjs && node test/lenses.mjs && node test/chain.mjs",
     "db:init": "wrangler d1 execute mokosveri-db --remote --file=schema.sql"
   },
   "devDependencies": {
