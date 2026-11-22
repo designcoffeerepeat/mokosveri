@@ -7,6 +7,22 @@ const fmtPct = (v, d = 1) => (v == null || !isFinite(v) ? 'n/a' : `${v > 0 ? '+'
 const cls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
 const pillCls = (s) => (s >= 15 ? 'up' : s <= -15 ? 'down' : 'flat');
 const clock = (ms) => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+const EXT_TAG = { pre: 'Pre', post: 'After' };
+const EXT_NAME = { pre: 'Pre-market', post: 'After hours' };
+const extTitle = (x) => {
+  const d = new Date(x.time);
+  const same = d.toDateString() === new Date().toDateString();
+  const when = d.toLocaleString('en-US', same ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  return `${EXT_NAME[x.session]} ${fmtNum(x.price)} (${fmtPct(x.changePct, 2)} vs the last close), as of ${when}`;
+};
+// Second line under the price and today cells for pre-market or after hours trading.
+const extPx = (x) => (x ? `<div class="ext" title="${esc(extTitle(x))}"><span class="ext-tag ext-${x.session}">${EXT_TAG[x.session]}</span>${fmtNum(x.price)}</div>` : '');
+const extCh = (x) => (x ? `<div class="ext ${cls(x.changePct)}" title="${esc(extTitle(x))}">${fmtPct(x.changePct, 2)}</div>` : '');
+// Sort value for the "Pre/After %" choice.
+const withExt = (r) => {
+  r.extPct = r.ext ? r.ext.changePct : null;
+  return r;
+};
 const ago = (ms) => {
   if (!ms) return 'never';
   const m = Math.round((Date.now() - ms) / 60000);
@@ -42,7 +58,7 @@ const sortKey = (id) => `wlSort:${id}`;
 function readSort(id) {
   try {
     const s = JSON.parse(localStorage.getItem(sortKey(id)) || localStorage.getItem('wlSort'));
-    if (s && (s.key === 'custom' || COLS.some((c) => c.key === s.key))) return s;
+    if (s && (s.key === 'custom' || s.key === 'extPct' || COLS.some((c) => c.key === s.key))) return s;
   } catch {}
   return { key: 'custom', dir: 1 };
 }
@@ -78,7 +94,7 @@ export function mountWatchTable(root, listId, opts = {}) {
       <div class="wl-bar">
         <form class="wl-add" autocomplete="off"><input type="text" maxlength="12" placeholder="Add a ticker, e.g. AAPL" aria-label="Add a ticker to this watchlist" spellcheck="false" /><button type="submit">Add</button></form>
         <div class="wl-live muted small" role="status"></div>
-        <label class="wl-sort"><span class="muted small">Sort</span><select>${['<option value="custom">My order</option>', ...COLS.map((c) => `<option value="${c.key}">${c.label}</option>`)].join('')}</select><button type="button" class="btn-ghost sm wl-dir" aria-label="Flip sort direction" title="Flip sort direction"></button></label>
+        <label class="wl-sort"><span class="muted small">Sort</span><select>${['<option value="custom">My order</option>', ...COLS.map((c) => `<option value="${c.key}">${c.label}</option>`), '<option value="extPct">Pre/After %</option>'].join('')}</select><button type="button" class="btn-ghost sm wl-dir" aria-label="Flip sort direction" title="Flip sort direction"></button></label>
       </div>
       <div class="auth-err wl-err" role="alert"></div>
       <div class="tbl-wrap wl-tbl"><div class="loading"><div class="spinner"></div>Loading…</div></div>
@@ -129,8 +145,8 @@ export function mountWatchTable(root, listId, opts = {}) {
             <td class="wl-h">${custom ? `<button type="button" class="handle" aria-label="Move ${esc(r.ticker)}. Use arrow keys." title="Drag to reorder">⋮⋮</button>` : ''}</td>
             <td class="mono"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a></td>
             <td class="wl-name">${esc(r.name || '')}</td>
-            <td class="num" data-c="price">${r.pending ? '<span class="muted">loading</span>' : r.error ? '<span class="muted">n/a</span>' : fmtNum(r.price)}</td>
-            <td class="num ${cls(r.change1d)}" data-c="chg">${r.price != null ? fmtPct(r.change1d, 2) : ''}</td>
+            <td class="num" data-c="price">${r.pending ? '<span class="muted">loading</span>' : r.error ? '<span class="muted">n/a</span>' : `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`}</td>
+            <td class="num" data-c="chg">${r.price != null ? `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}` : ''}</td>
             <td class="num wl-m ${cls(r.ret1m)}">${r.price != null ? fmtPct(r.ret1m) : ''}</td>
             <td class="num wl-y ${cls(r.ret1y)}">${r.price != null ? fmtPct(r.ret1y) : ''}</td>
             <td class="num">${r.score != null ? `<span class="pill ${pillCls(r.score)} wl-pill" title="${esc(scoreTitle(r))}">${est ? '~' : ''}${r.score > 0 ? '+' : ''}${r.score}</span>` : ''}</td>
@@ -146,8 +162,9 @@ export function mountWatchTable(root, listId, opts = {}) {
     const el = $('.wl-live');
     if (!el || !meta.at) return;
     const open = meta.market === 'open';
-    el.innerHTML = `<span class="live-dot${open ? ' on' : ''}"></span>${open ? 'Live' : meta.market ? `Market ${esc(meta.market)}` : 'Prices'} · updated ${clock(meta.at)}`;
-    el.title = `Prices refresh every ${meta.refreshSec || 60} seconds while this list is open. Quotes from Yahoo Finance, some may be delayed.`;
+    const label = open ? 'Live' : meta.market === 'pre-market' ? 'Pre-market' : meta.market === 'after hours' ? 'After hours' : meta.market ? `Market ${esc(meta.market)}` : 'Prices';
+    el.innerHTML = `<span class="live-dot${open ? ' on' : meta.market === 'pre-market' || meta.market === 'after hours' ? ' ext' : ''}"></span>${label} · updated ${clock(meta.at)}`;
+    el.title = `Prices refresh every ${meta.refreshSec || 60} seconds while this list is open. Price and Today are the regular session. Pre and After lines show pre-market and after hours trading against the last close. Quotes from Yahoo Finance, some may be delayed.`;
   }
   function flash(t, up) {
     const tr = table.querySelector(`tr[data-t="${CSS.escape(t)}"]`);
@@ -165,22 +182,23 @@ export function mountWatchTable(root, listId, opts = {}) {
     for (const lq of d.items) {
       const r = by.get(lq.ticker);
       if (!r) continue;
-      if (r.price != null && lq.price !== r.price) changed.push([lq.ticker, lq.price > r.price]);
+      const was = r.ext ? r.ext.price : r.price;
+      const now = lq.ext ? lq.ext.price : lq.price;
+      if (was != null && now !== was) changed.push([lq.ticker, now > was]);
       r.price = lq.price;
       if (lq.change1d != null) r.change1d = lq.change1d;
+      if ('ext' in lq) r.ext = lq.ext;
+      withExt(r);
       r.pending = false;
       r.error = null;
     }
-    if (!dragging && (sort.key === 'price' || sort.key === 'change1d')) paint();
+    if (!dragging && (sort.key === 'price' || sort.key === 'change1d' || sort.key === 'extPct')) paint();
     else
       for (const r of items) {
         const tr = table.querySelector(`tr[data-t="${CSS.escape(r.ticker)}"]`);
         if (!tr || r.price == null) continue;
-        tr.querySelector('[data-c="price"]').textContent = fmtNum(r.price);
-        const c = tr.querySelector('[data-c="chg"]');
-        c.textContent = fmtPct(r.change1d, 2);
-        c.classList.remove('up', 'down');
-        if (cls(r.change1d)) c.classList.add(cls(r.change1d));
+        tr.querySelector('[data-c="price"]').innerHTML = `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`;
+        tr.querySelector('[data-c="chg"]').innerHTML = `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}`;
       }
     paintLive();
     for (const [t, up] of changed) flash(t, up);
@@ -211,7 +229,7 @@ export function mountWatchTable(root, listId, opts = {}) {
       const d = await req('GET', `/api/watchlist?${q()}`);
       if (!alive()) return;
       loaded = true;
-      items = d.items;
+      items = d.items.map(withExt);
       max = d.max;
       if (d.at) meta = { refreshSec: d.refreshSec, market: d.market, at: d.at };
       err('');

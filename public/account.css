@@ -200,3 +200,19 @@ td.flash-down { animation: flashDown 1.4s ease-out; }
 .imp-dest select, .imp-dest input:not([type]) { height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--ink); font: 13.5px var(--sans); }
 .imp-dest input:not([type]) { width: 200px; }
 .imp-done { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 0; }
+
+/* Pre-market and after hours figures (watchlists, home lists, pinned strip, ticker page) */
+.ext { margin-top: 2px; font: 11.5px var(--mono); color: var(--ink-2); white-space: nowrap; cursor: help; }
+.ext.up { color: var(--up); }
+.ext.down { color: var(--down); }
+.ext-tag { display: inline-block; margin-right: 5px; padding: 0 5px; border-radius: 4px; font: 600 10px/16px var(--sans); letter-spacing: 0.02em; vertical-align: 1px; background: var(--surface-2); color: var(--ink-2); }
+.ext-tag.ext-pre { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+:root { --ext-post: #5b5bd6; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme='light']) { --ext-post: #a5b4fc; } }
+:root[data-theme='dark'] { --ext-post: #a5b4fc; }
+.ext-tag.ext-post { background: color-mix(in srgb, var(--ext-post) 16%, transparent); color: var(--ext-post); }
+.live-dot.ext { background: var(--warn); }
+.pin-ext { font-size: 11.5px; color: var(--muted); }
+.pin-ext .ext-tag { margin-right: 3px; }
+.price-big .ext-line { margin-top: 4px; font: 13px var(--mono); color: var(--ink-2); }
+.price-big .ext-line .ext-tag { font-size: 10.5px; }

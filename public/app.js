@@ -258,6 +258,22 @@ function stat(k, v, h = '') {
   return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${h ? `<div class="h">${h}</div>` : ''}</div>`;
 }
 
+// Pre-market or after hours line under the big price, from the live quote.
+async function showExtended(t) {
+  try {
+    const d = await api(`/api/quotes?t=${encodeURIComponent(t)}`);
+    const q = d.items && d.items[0];
+    const x = q && q.ext;
+    const el = document.getElementById('extLine');
+    if (!x || !el) return;
+    const name = x.session === 'pre' ? 'Pre-market' : 'After hours';
+    const when = new Date(x.time).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+    el.innerHTML = `<span class="ext-tag ext-${x.session}">${name}</span>${fmtNum(x.price)} <span class="${cls(x.changePct)}">${fmtPct(x.changePct, 2)}</span> <span class="muted">${esc(when)}</span>`;
+    el.title = `${name} trading against the last regular close. Quotes from Yahoo Finance, some may be delayed.`;
+    el.hidden = false;
+  } catch {}
+}
+
 async function renderTicker(t) {
   document.title = `${t} · Mokosveri`;
   app.innerHTML = loading(`Analyzing ${t}: pulling SEC filings, analyst actions, social chatter and price history…`);
@@ -367,6 +383,7 @@ async function renderTicker(t) {
       </div>
       <div class="price-big"><div class="p">${fmtNum(tc.price)} <span class="muted" style="font-size:14px">${esc(a.currency || '')}</span></div>
         <div class="c ${cls(tc.change1d)}">${fmtPct(tc.change1d, 2)} today · <span class="${cls(tc.ret1m)}">${fmtPct(tc.ret1m)} 1M</span> · <span class="${cls(tc.ret1y)}">${fmtPct(tc.ret1y)} 1Y</span></div>
+        <div class="ext-line" id="extLine" hidden></div>
         <div class="watch-slot" id="watchSlot"></div></div>
     </div>
 
@@ -433,6 +450,7 @@ async function renderTicker(t) {
   `;
   app.querySelectorAll('tr.click').forEach((tr) => tr.addEventListener('click', () => go(tr.dataset.t)));
   mountWatchButton($('#watchSlot'), a.ticker);
+  showExtended(a.ticker);
 }
 
 // ---------- router ----------

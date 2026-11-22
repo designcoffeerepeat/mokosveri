@@ -21,6 +21,9 @@ const save = (k, v) => {
 const fmt = (v) => (v == null || !isFinite(v) ? '' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const pct = (v) => (v == null || !isFinite(v) ? '' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`);
 const cls = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+const EXT_TAG = { pre: 'Pre', post: 'AH' };
+const EXT_NAME = { pre: 'Pre-market', post: 'After hours' };
+const extTitle = (x) => `${EXT_NAME[x.session]} ${fmt(x.price)} (${pct(x.changePct)} vs the last close), as of ${new Date(x.time).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
 
 // Sort cycles per column: first direction, flipped, then back to the list's own order.
 const COLS = [
@@ -44,7 +47,7 @@ export async function mountHomeLists(el) {
   }
   const open = load(OPEN_KEY) || { [lists[0].id]: true }; // first visit: first list open
   const sorts = load(SORT_KEY) || {};
-  const quotes = new Map(); // ticker -> { price, change1d }
+  const quotes = new Map(); // ticker -> { price, change1d, ext }
   let meta = {};
   let timer = null;
 
@@ -89,7 +92,11 @@ export async function mountHomeLists(el) {
     ).join('')}</tr></thead><tbody>${rows(l)
       .map((r) => {
         const f = moved.has(r.ticker) ? (moved.get(r.ticker) ? ' flash-up' : ' flash-down') : '';
-        return `<tr><td class="mono"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a></td><td class="num${f}">${r.price != null ? fmt(r.price) : '<span class="muted">...</span>'}</td><td class="num ${cls(r.change1d)}${f}">${pct(r.change1d)}</td></tr>`;
+        const x = r.ext;
+        const t = x ? ` title="${esc(extTitle(x))}"` : '';
+        const xPx = x ? `<div class="ext"${t}><span class="ext-tag ext-${x.session}">${EXT_TAG[x.session]}</span>${fmt(x.price)}</div>` : '';
+        const xCh = x ? `<div class="ext ${cls(x.changePct)}"${t}>${pct(x.changePct)}</div>` : '';
+        return `<tr><td class="mono"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a></td><td class="num${f}">${r.price != null ? fmt(r.price) : '<span class="muted">...</span>'}${xPx}</td><td class="num${f}"><span class="${cls(r.change1d)}">${pct(r.change1d)}</span>${xCh}</td></tr>`;
       })
       .join('')}</tbody></table>`;
   }
@@ -98,7 +105,8 @@ export async function mountHomeLists(el) {
     const s = el.querySelector('.side-live');
     if (!s || !meta.at) return;
     const live = meta.market === 'open';
-    s.innerHTML = `<span class="live-dot${live ? ' on' : ''}"></span>${live ? 'Live' : meta.market ? esc(meta.market) : ''}`;
+    const ext = meta.market === 'pre-market' || meta.market === 'after hours';
+    s.innerHTML = `<span class="live-dot${live ? ' on' : ext ? ' ext' : ''}"></span>${live ? 'Live' : meta.market ? esc(meta.market) : ''}`;
     s.title = `Updated ${new Date(meta.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}. Quotes from Yahoo Finance, some may be delayed.`;
   }
 
@@ -114,8 +122,10 @@ export async function mountHomeLists(el) {
         const moved = new Map();
         for (const q of d.items) {
           const old = quotes.get(q.ticker);
-          if (old && old.price != null && old.price !== q.price) moved.set(q.ticker, q.price > old.price);
-          quotes.set(q.ticker, { price: q.price, change1d: q.change1d });
+          const was = old && (old.ext ? old.ext.price : old.price);
+          const now = q.ext ? q.ext.price : q.price;
+          if (was != null && was !== now) moved.set(q.ticker, now > was);
+          quotes.set(q.ticker, { price: q.price, change1d: q.change1d, ext: q.ext || null });
         }
         paint(openLists[i], moved);
       });

@@ -72,6 +72,7 @@ function overlayLive(rows, live) {
     if (q.change1d != null) r.change1d = q.change1d;
     r.quoteTime = q.time;
     r.marketState = q.marketState;
+    r.ext = q.ext || null;
     if (!r.name && q.name) r.name = q.name;
     if (r.pending) r.pending = false;
     r.error = null;
@@ -159,7 +160,7 @@ export async function handlePins(request, env, path, ip) {
     const byT = new Map(rows.map((r) => [r.ticker, r]));
     const items = list.map((t) => {
       const q = live.get(t);
-      if (q) return { ticker: t, name: q.name, price: q.price, change1d: q.change1d, quoteTime: q.time };
+      if (q) return { ticker: t, name: q.name, price: q.price, change1d: q.change1d, quoteTime: q.time, marketState: q.marketState, ext: q.ext || null };
       const r = byT.get(t) || { ticker: t, error: 'No price data' };
       return { ticker: t, name: r.name, price: r.price, change1d: r.change1d, pending: r.pending, error: r.error };
     });
@@ -220,7 +221,12 @@ export async function handleWatchlist(request, env, path) {
     const tickers = (await listTickers(env, list.id)).map((i) => i.ticker);
     const live = await liveQuotes(env, tickers);
     return json({
-      items: tickers.filter((t) => live.has(t)).map((t) => ({ ticker: t, price: live.get(t).price, change1d: live.get(t).change1d, quoteTime: live.get(t).time })),
+      items: tickers
+        .filter((t) => live.has(t))
+        .map((t) => {
+          const q = live.get(t);
+          return { ticker: t, price: q.price, change1d: q.change1d, quoteTime: q.time, marketState: q.marketState, ext: q.ext || null };
+        }),
       ...(await liveMeta(live)),
     });
   }
