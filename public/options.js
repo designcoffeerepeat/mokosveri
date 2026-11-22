@@ -83,6 +83,8 @@ const S = {
   strat: 'long_call',
   legs: [],
   range: 0, // 0 = auto, else +/- percent
+  pxLo: '', // custom low and high stock price for the table and chart ('' = use range)
+  pxHi: '',
   view: 'pl', // pl | pct | value
   dateIdx: 0,
   loading: false,
@@ -254,20 +256,38 @@ function tableDates() {
   return out;
 }
 
+// Stock price bounds: typed low and high prices win, else the range slider,
+// else about two standard deviations.
+export function priceBounds(price, sigma, T, range = 0, pxLo = '', pxHi = '') {
+  const auto = Math.min(0.6, Math.max(0.06, 2 * sigma * Math.sqrt(Math.max(T, 1 / 365))));
+  const pct = range > 0 ? range / 100 : auto;
+  let lo = price * (1 - pct);
+  let hi = price * (1 + pct);
+  const cLo = pxLo !== '' && +pxLo >= 0 ? +pxLo : null;
+  const cHi = pxHi !== '' && +pxHi > 0 ? +pxHi : null;
+  if (cLo != null) lo = cLo;
+  if (cHi != null) hi = cHi;
+  if (hi <= lo) {
+    // Only one side typed and it crossed the price: keep a sensible window.
+    if (cHi != null && cLo == null) lo = Math.max(0, hi * (1 - pct));
+    else if (cLo != null && cHi == null) hi = lo * (1 + pct) || price;
+    else [lo, hi] = [hi, lo];
+  }
+  if (hi <= lo) hi = lo + Math.max(0.01, price * 0.01);
+  return { lo, hi, pct, custom: cLo != null || cHi != null };
+}
+
 function priceRows(sigma) {
   const T = yearsTo(Date.now(), S.expiry);
-  const auto = Math.min(0.6, Math.max(0.06, 2 * sigma * Math.sqrt(Math.max(T, 1 / 365))));
-  const pct = S.range > 0 ? S.range / 100 : auto;
-  const lo = S.price * (1 - pct);
-  const hi = S.price * (1 + pct);
+  const { lo, hi, pct, custom } = priceBounds(S.price, sigma, T, S.range, S.pxLo, S.pxHi);
   const raw = (hi - lo) / 22;
   const mag = Math.pow(10, Math.floor(Math.log10(raw)));
   const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) || raw;
   const rows = [];
   for (let x = Math.ceil(hi / step) * step; x >= lo - 1e-9; x -= step) if (x > 0) rows.push(+x.toFixed(4));
   // Insert the current price as its own row
-  if (!rows.some((x) => Math.abs(x - S.price) < step * 0.15)) rows.push(S.price);
-  return { rows: rows.sort((a, b) => b - a), step, pct };
+  if (S.price >= lo && S.price <= hi && !rows.some((x) => Math.abs(x - S.price) < step * 0.15)) rows.push(S.price);
+  return { rows: rows.sort((a, b) => b - a), step, pct, lo, hi, custom };
 }
 
 // ---------- rendering ----------
@@ -409,7 +429,12 @@ function tableHtml(m, a) {
   return `<table class="ox-heat"><thead><tr><th class="ox-px">Stock price</th>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
-const rangeText = () => (S.range > 0 ? `±${S.range}%` : 'Auto (about 2 standard deviations)');
+const rangeText = () =>
+  S.pxLo !== '' || S.pxHi !== ''
+    ? 'Custom prices (move the slider to go back)'
+    : S.range > 0
+      ? `±${S.range}%`
+      : 'Auto (about 2 standard deviations)';
 
 function tableCard(m, a) {
   return `<div class="card ox-card">
@@ -420,9 +445,19 @@ function tableCard(m, a) {
         <button data-view="value" class="${S.view === 'value' ? 'on' : ''}">Value</button>
       </div>
     </div>
-    <div class="ox-range"><label>Price range <input id="oxRange" type="range" min="0" max="60" step="1" value="${S.range}" /></label><span class="muted" id="oxRangeTxt">${rangeText()}</span></div>
+    <div class="ox-range"><label>Price range <input id="oxRange" type="range" min="0" max="90" step="1" value="${S.range}" /></label><span class="muted" id="oxRangeTxt">${rangeText()}</span>
+      <div class="ox-pxset"><label>Low $<input id="oxLo" type="number" min="0" step="any" inputmode="decimal" placeholder="${fmt(priceRows(a.sigma).lo)}" value="${esc(S.pxLo)}" aria-label="Lowest stock price to show" /></label>
+        <label>High $<input id="oxHi" type="number" min="0" step="any" inputmode="decimal" placeholder="${fmt(priceRows(a.sigma).hi)}" value="${esc(S.pxHi)}" aria-label="Highest stock price to show" /></label>
+        ${S.pxLo !== '' || S.pxHi !== '' ? '<button type="button" class="ox-pxreset" data-act="pxreset">Reset</button>' : ''}</div></div>
     <div class="tbl-wrap" id="oxHeatInner">${tableHtml(m, a)}</div>
   </div>`;
+}
+
+// Chart x range: typed prices are shown exactly, otherwise the table range padded a little.
+function chartBounds(a) {
+  const b = priceRows(a.sigma);
+  if (b.custom) return { lo: b.lo, hi: b.hi };
+  return { lo: Math.max(0, S.price - (S.price - b.lo) * 1.25), hi: S.price + (b.hi - S.price) * 1.25 };
 }
 
 // Draw at the real pixel width so axis labels stay readable on phones.
@@ -434,9 +469,7 @@ function chartSize() {
 function chartHtml(m, a) {
   const dates = tableDates();
   if (S.dateIdx >= dates.length) S.dateIdx = 0;
-  const { pct } = priceRows(a.sigma);
-  const lo = S.price * (1 - pct * 1.25);
-  const hi = S.price * (1 + pct * 1.25);
+  const { lo, hi } = chartBounds(a);
   const N = 160;
   const xs = Array.from({ length: N + 1 }, (_, i) => lo + ((hi - lo) * i) / N);
   const tSel = dates[S.dateIdx].t;
@@ -511,9 +544,7 @@ function bindChartHover(m, a) {
   const tip = box.querySelector('#oxTip');
   const dates = tableDates();
   const tSel = dates[S.dateIdx].t;
-  const { pct } = priceRows(a.sigma);
-  const lo = S.price * (1 - pct * 1.25);
-  const hi = S.price * (1 + pct * 1.25);
+  const { lo, hi } = chartBounds(a);
   // recompute the same scale as chartHtml
   const N = 160;
   const xs = Array.from({ length: N + 1 }, (_, i) => lo + ((hi - lo) * i) / N);
@@ -703,6 +734,11 @@ function onChange(e) {
     S.ivOverride = el.value;
     return render();
   }
+  if (el.id === 'oxLo' || el.id === 'oxHi') {
+    const v = el.value.trim();
+    S[el.id === 'oxLo' ? 'pxLo' : 'pxHi'] = v !== '' && +v >= 0 ? String(+v) : '';
+    return render();
+  }
   if (el.id === 'oxRange' || el.id === 'oxDate') return;
   const tr = el.closest('tr[data-i]');
   if (tr && el.dataset.f) {
@@ -733,6 +769,17 @@ function onInput(e) {
   const el = e.target;
   if (el.id === 'oxRange') {
     S.range = +el.value;
+    // The slider takes over from typed prices.
+    if (S.pxLo !== '' || S.pxHi !== '') {
+      S.pxLo = '';
+      S.pxHi = '';
+      for (const id of ['oxLo', 'oxHi']) {
+        const f = root.querySelector(`#${id}`);
+        if (f) f.value = '';
+      }
+      const r = root.querySelector('.ox-pxreset');
+      if (r) r.remove();
+    }
     redrawOutputs(['chart', 'table']);
   } else if (el.id === 'oxDate') {
     S.dateIdx = +el.value;
@@ -762,6 +809,9 @@ function onClick(e) {
   } else if (act === 'add-S') {
     S.legs.push({ stock: true, side: 1, qty: 1, premium: S.price });
     S.strat = 'custom';
+  } else if (act === 'pxreset') {
+    S.pxLo = '';
+    S.pxHi = '';
   } else if (act === 'reprice') {
     for (const l of S.legs) l.edited = false;
     refreshPremiums();
