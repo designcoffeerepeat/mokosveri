@@ -6,7 +6,8 @@ import { parseOpenInsiderTable, aggregatePurchases } from '../src/sources/openin
 import { computeTechnicals, rsi } from '../src/analysis/technicals.js';
 import { analyzeTicker } from '../src/analyze.js';
 import { buildBuzz } from '../src/buzz.js';
-import { cleanTicker, yahooSymbol } from '../src/util.js';
+import { cleanTicker, yahooSymbol, withBudget } from '../src/util.js';
+import { tickerSnapshot } from '../src/snapshot.js';
 
 const today = new Date().toISOString().slice(0, 10);
 const dAgo = (n) => new Date(Date.now() - n * 864e5).toISOString().slice(0, 10);
@@ -173,6 +174,33 @@ console.log('AI plain:', a2.plain.paragraph, '| method', a2.newsMeta.method);
 assert.equal(a2.plain.aiWritten, true);
 assert.equal(a2.newsMeta.method, 'ai');
 assert.ok(!/[\u2014\u2013]/.test(a2.plain.paragraph));
+
+// snapshot: header facts and series match the full analysis
+mem.clear();
+const snap = await tickerSnapshot(env, 'ACME');
+assert.ok(!snap.error, snap.error);
+assert.equal(snap.name, a.name);
+assert.equal(snap.type, 'Stock');
+assert.equal(snap.price, a.technicals.price);
+assert.equal(snap.change1d, a.technicals.change1d);
+assert.equal(snap.series.length, a.series.length);
+const snapIdx = await tickerSnapshot(env, 'VIX');
+assert.equal(snapIdx.type, 'Index');
+
+// AI time budget: a slow model falls back to keywords and the template note,
+// and the late answer is handed to waitUntil.
+assert.equal(await withBudget(Promise.resolve(7), 50, 0), 7);
+const bg = [];
+assert.equal(await withBudget(new Promise((r) => setTimeout(() => r(7), 200)), 20, 'late', (p) => bg.push(p)), 'late');
+assert.equal(await bg[0], 7);
+mem.clear();
+const later = [];
+const slowAi = { ...env, AI: { run: () => new Promise((r) => setTimeout(() => r({ response: '1: positive' }), 400)) } };
+const { scoreHeadlines } = await import('../src/sources/news.js');
+const sh = await scoreHeadlines(slowAi, 'ACME', [{ title: 'Acme beats estimates', time: new Date().toISOString() }], { budgetMs: 30, waitUntil: (p) => later.push(p) });
+assert.equal(sh.method, 'keywords');
+assert.equal(later.length, 1);
+await Promise.all(later);
 
 // indices: VIX maps to ^VIX, stock-only sources are skipped
 assert.equal(cleanTicker('^VIX'), 'VIX');

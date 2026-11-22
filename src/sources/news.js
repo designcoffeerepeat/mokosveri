@@ -2,7 +2,7 @@
 // Yahoo Finance search API, Yahoo Finance RSS, and Google News RSS.
 // Each headline gets a tone (positive / negative / neutral), from Workers AI
 // when available and a finance word list otherwise.
-import { getJSON, getText, cached, BROWSER_UA, settle } from '../util.js';
+import { getJSON, getText, cached, BROWSER_UA, settle, withBudget } from '../util.js';
 
 const H = { 'User-Agent': BROWSER_UA };
 
@@ -136,10 +136,13 @@ async function aiTones(env, ticker, items) {
 }
 
 // Recency weighted tone. Stories from today count fully; a 3 day old story about half.
-export async function scoreHeadlines(env, ticker, items) {
+// The AI rating gets a few seconds; past that the keyword rating is used and
+// the AI answer is cached in the background for the next visit.
+export async function scoreHeadlines(env, ticker, items, opts = {}) {
   let ai = null;
   try {
-    ai = await cached(env, `newstone:${ticker}:${items.length}:${norm(items[0] && items[0].title).slice(0, 30)}`, 3600, () => aiTones(env, ticker, items));
+    const p = cached(env, `newstone:${ticker}:${items.length}:${norm(items[0] && items[0].title).slice(0, 30)}`, 3600, () => aiTones(env, ticker, items));
+    ai = await withBudget(p, opts.budgetMs || 4000, null, opts.waitUntil);
   } catch {}
   const now = Date.now();
   let num = 0;

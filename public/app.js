@@ -274,16 +274,101 @@ async function showExtended(t) {
   } catch {}
 }
 
+// The ticker page paints in two steps. A quick snapshot (price, header and the
+// 1 year chart) shows right away, then the full analysis (SEC filings, news,
+// social, analysts, AI note) fills in the sections below when it arrives.
+let tickerSeq = 0;
+
+const skel = (rows = 3) => `<div class="card skel-card" aria-hidden="true">${Array.from({ length: rows }, (_, i) => `<div class="skel" style="width:${[92, 76, 84, 64, 88][i % 5]}%"></div>`).join('')}</div>`;
+
+function headHtml(h) {
+  return `<div class="tk-head">
+      <div>
+        <h1><span id="tkName">${esc(h.name)}</span><span class="sym">${esc(h.ticker)}</span></h1>
+        <div class="sub" id="tkSub">${subLine(h)}</div>
+      </div>
+      <div class="price-big"><div class="p">${fmtNum(h.price)} <span class="muted" style="font-size:14px">${esc(h.currency || '')}</span></div>
+        <div class="c ${cls(h.change1d)}">${fmtPct(h.change1d, 2)} today · <span class="${cls(h.ret1m)}">${fmtPct(h.ret1m)} 1M</span> · <span class="${cls(h.ret1y)}">${fmtPct(h.ret1y)} 1Y</span></div>
+        <div class="ext-line" id="extLine" hidden></div>
+        <div class="watch-slot" id="watchSlot"></div></div>
+    </div>`;
+}
+const subLine = (h) => `${esc([h.type, h.exchange, h.sector, h.industry].filter(Boolean).join(' · '))}${h.marketCap ? ` · ${fmtMoney(h.marketCap)} market cap` : ''}`;
+
+// Header facts from a full analysis, for when the snapshot call failed.
+const headFromAnalysis = (a) => {
+  const tc = a.technicals || {};
+  return { ...a, price: tc.price, change1d: tc.change1d, ret1m: tc.ret1m, ret1y: tc.ret1y };
+};
+
+function paintShell(h, series) {
+  app.innerHTML = `
+    ${headHtml(h)}
+
+    <div id="tkTop">
+      <div class="loading-note"><div class="spinner sm"></div>Pulling SEC filings, analyst actions, news and social chatter…</div>
+      ${skel(4)}
+      ${skel(3)}
+    </div>
+
+    <h2 class="section">Price, 1 year <small class="muted">dashed line: 50 day average</small></h2>
+    <div class="card chart-box" id="chartBox">${priceChart(series)}</div>
+    <div id="tkRest">${h.type === 'Index' ? skel(3) : `${skel(5)}${skel(4)}`}</div>
+  `;
+  mountWatchButton($('#watchSlot'), h.ticker);
+  showExtended(h.ticker);
+}
+
 async function renderTicker(t) {
+  const seq = ++tickerSeq;
+  const live = () => seq === tickerSeq;
   document.title = `${t} · Mokosveri`;
-  app.innerHTML = loading(`Analyzing ${t}: pulling SEC filings, analyst actions, social chatter and price history…`);
-  let a;
+  app.innerHTML = loading(`Loading ${t}…`);
+  const full = api(`/api/analyze/${encodeURIComponent(t)}`).then((a) => ({ a }), (e) => ({ e }));
+  let snap = null;
   try {
-    a = await api(`/api/analyze/${encodeURIComponent(t)}`);
-  } catch (e) {
-    app.innerHTML = `<div class="err"><h2>Could not analyze ${esc(t)}</h2><p class="muted">${esc(e.message)}</p><p><a href="#/">Back to the buzz board</a></p></div>`;
+    snap = await api(`/api/snapshot/${encodeURIComponent(t)}`);
+  } catch {}
+  if (!live()) return;
+  if (snap) paintShell(snap, snap.series);
+
+  const r = await full;
+  if (!live()) return;
+  if (r.e) {
+    if (!snap) {
+      app.innerHTML = `<div class="err"><h2>Could not analyze ${esc(t)}</h2><p class="muted">${esc(r.e.message)}</p><p><a href="#/">Back to the buzz board</a></p></div>`;
+      return;
+    }
+    $('#tkTop').innerHTML = `<div class="err" style="padding:20px 0"><p>Prices are up to date, but the full analysis could not load: <span class="muted">${esc(r.e.message)}</span></p><p><a href="#/t/${encodeURIComponent(t)}" id="tkRetry">Try again</a></p></div>`;
+    $('#tkRest').innerHTML = '';
+    $('#tkRetry').addEventListener('click', (ev) => {
+      ev.preventDefault();
+      renderTicker(t);
+    });
     return;
   }
+  if (!snap) paintShell(headFromAnalysis(r.a), r.a.series);
+  fillAnalysis(r.a);
+
+  // An older cached analysis was served so the page could show at once. A new
+  // one is being built on the server; swap it in when it is ready.
+  if (r.a.stale) {
+    for (const wait of [8000, 15000]) {
+      await new Promise((res) => setTimeout(res, wait));
+      if (!live()) return;
+      try {
+        const b = await api(`/api/analyze/${encodeURIComponent(t)}`);
+        if (!live()) return;
+        if (b.asOf !== r.a.asOf) {
+          fillAnalysis(b);
+          return;
+        }
+      } catch {}
+    }
+  }
+}
+
+function fillAnalysis(a) {
   document.title = `${a.ticker} ${a.verdict} · Mokosveri`;
   const tc = a.technicals || {};
   const pos = a.positioning || {};
@@ -375,18 +460,9 @@ async function renderTicker(t) {
 
   const srcNames = { price: 'Prices', benchmark: 'S&P 500 benchmark', yahooFundamentals: 'Analysts and short interest', news: 'News', stocktwits: 'StockTwits', reddit: 'Reddit', congress: 'Congress', secForm4: 'SEC Form 4' };
 
-  app.innerHTML = `
-    <div class="tk-head">
-      <div>
-        <h1>${esc(a.name)}<span class="sym">${esc(a.ticker)}</span></h1>
-        <div class="sub">${esc([a.type, a.exchange, a.sector, a.industry].filter(Boolean).join(' · '))}${a.marketCap ? ` · ${fmtMoney(a.marketCap)} market cap` : ''}</div>
-      </div>
-      <div class="price-big"><div class="p">${fmtNum(tc.price)} <span class="muted" style="font-size:14px">${esc(a.currency || '')}</span></div>
-        <div class="c ${cls(tc.change1d)}">${fmtPct(tc.change1d, 2)} today · <span class="${cls(tc.ret1m)}">${fmtPct(tc.ret1m)} 1M</span> · <span class="${cls(tc.ret1y)}">${fmtPct(tc.ret1y)} 1Y</span></div>
-        <div class="ext-line" id="extLine" hidden></div>
-        <div class="watch-slot" id="watchSlot"></div></div>
-    </div>
-
+  $('#tkName').textContent = a.name;
+  $('#tkSub').innerHTML = subLine(a);
+  $('#tkTop').innerHTML = `
     ${plainHtml}
 
     <div class="card score-card">
@@ -409,10 +485,8 @@ async function renderTicker(t) {
 
     <h2 class="section">Latest news <small class="muted">${a.newsMeta ? `${a.news.length} stories, last 10 days${a.newsMeta.method === 'ai' ? ' · tone rated by AI' : ''}` : ''}</small></h2>
     <div class="card news">${newsHtml}</div>
-
-    <h2 class="section">Price, 1 year <small class="muted">dashed line: 50 day average</small></h2>
-    <div class="card chart-box">${priceChart(a.series)}</div>
-
+  `;
+  $('#tkRest').innerHTML = `
     <h2 class="section">What is driving the score</h2>
     <div class="card">${a.components.map(compBlock).join('')}</div>
 
@@ -444,13 +518,11 @@ async function renderTicker(t) {
 
     ${profileHtml}
 
-    <h2 class="section">Data sources <small class="muted">analyzed ${ago(a.asOf)}</small></h2>
+    <h2 class="section">Data sources <small class="muted">analyzed ${ago(a.asOf)}${a.stale ? ', refreshing now' : ''}</small></h2>
     <div class="card src">${Object.entries(a.sources).map(([k, v]) => `<span class="chip ${v ? 'ok' : 'no'}" title="${esc((a.errors || {})[k] || '')}">${esc(srcNames[k] || k)}</span>`).join('')}</div>
     <div class="notice"><b>Not financial advice.</b> This score is a rules based summary of public signals, not a prediction or recommendation. Insider and congressional filings are disclosed with a delay and can be amended.</div>
   `;
-  app.querySelectorAll('tr.click').forEach((tr) => tr.addEventListener('click', () => go(tr.dataset.t)));
-  mountWatchButton($('#watchSlot'), a.ticker);
-  showExtended(a.ticker);
+  app.querySelectorAll('#tkRest tr.click').forEach((tr) => tr.addEventListener('click', () => go(tr.dataset.t)));
 }
 
 // ---------- router ----------

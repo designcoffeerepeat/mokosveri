@@ -208,6 +208,13 @@ tr.click:hover td { background: var(--surface-2); }
 .loading { padding: 80px 0; text-align: center; color: var(--muted); }
 .spinner { width: 28px; height: 28px; border: 2.5px solid var(--line); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Ticker page placeholders while the full analysis loads */
+.spinner.sm { width: 14px; height: 14px; border-width: 2px; margin: 0; flex: none; }
+.loading-note { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+.skel-card { padding: 18px 20px; margin-bottom: 16px; }
+.skel { height: 12px; border-radius: 6px; margin: 10px 0; background: linear-gradient(90deg, var(--line) 0%, color-mix(in srgb, var(--line) 45%, transparent) 50%, var(--line) 100%); background-size: 200% 100%; animation: shimmer 1.3s ease-in-out infinite; }
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
 .err { padding: 60px 0; text-align: center; }
 .err h2 { font: 400 32px var(--serif); margin: 0 0 8px; }
 

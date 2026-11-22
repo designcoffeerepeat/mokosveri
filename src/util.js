@@ -163,3 +163,17 @@ export async function settle(promise) {
     return { ok: false, error: String(e && e.message ? e.message : e) };
   }
 }
+
+// Waits at most `ms` for a slow promise (an AI call, say). On time out it
+// resolves to `fallback`, and the work keeps running in the background through
+// `waitUntil` when one is given, so its cached result is ready next time.
+export function withBudget(promise, ms, fallback = null, waitUntil = null) {
+  let timer;
+  const late = new Promise((res) => {
+    timer = setTimeout(() => {
+      if (waitUntil) waitUntil(promise.catch(() => {}));
+      res(fallback);
+    }, ms);
+  });
+  return Promise.race([promise.finally(() => clearTimeout(timer)), late]);
+}
