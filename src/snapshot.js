@@ -1,5 +1,5 @@
-// Fast first paint for the ticker page: price, header facts and the 1y series
-// from the cached Yahoo chart call, plus company facts when the cached quote
+// Fast first paint for the ticker page: price and header facts from the cached
+// Yahoo chart call, plus company facts when the cached quote
 // summary answers quickly. The slow sources (SEC, news, social, AI) come later
 // from /api/analyze.
 import { settle, withBudget, isIndex, INDEX_NAMES } from './util.js';
@@ -36,7 +36,6 @@ export async function tickerSnapshot(env, ticker, waitUntil = null) {
     change1d: t.change1d ?? null,
     ret1m: t.ret1m ?? null,
     ret1y: t.ret1y ?? null,
-    series: bars.slice(-252).map((b) => [b.t, +b.c.toFixed(4), b.v]),
     asOf: new Date().toISOString(),
   };
 }

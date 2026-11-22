@@ -206,42 +206,6 @@ async function renderHome() {
 }
 
 // ---------- ticker page ----------
-function priceChart(series) {
-  if (!series || series.length < 10) return '<div class="empty">No chart data.</div>';
-  const W = 1000;
-  const H = 260;
-  const P = { l: 8, r: 54, t: 12, b: 22 };
-  const closes = series.map((s) => s[1]);
-  const smaN = (n) => closes.map((_, i) => (i < n - 1 ? null : closes.slice(i - n + 1, i + 1).reduce((a, b) => a + b, 0) / n));
-  const s50 = smaN(50);
-  const min = Math.min(...closes) * 0.97;
-  const max = Math.max(...closes) * 1.02;
-  const x = (i) => P.l + (i / (closes.length - 1)) * (W - P.l - P.r);
-  const y = (v) => P.t + (1 - (v - min) / (max - min)) * (H - P.t - P.b);
-  const line = (arr) => arr.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean).join(' ');
-  const up = closes[closes.length - 1] >= closes[0];
-  const area = `${x(0)},${H - P.b} ${line(closes)} ${x(closes.length - 1)},${H - P.b}`;
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => min + f * (max - min));
-  const months = [];
-  let lastM = -1;
-  series.forEach((s, i) => {
-    const d = new Date(s[0] * 1000);
-    if (d.getMonth() !== lastM) {
-      lastM = d.getMonth();
-      if (i > 5) months.push({ i, label: d.toLocaleDateString('en-US', { month: 'short' }) });
-    }
-  });
-  const col = up ? 'var(--up)' : 'var(--down)';
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="One year price chart">
-    <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${up ? '#10b981' : '#f43f5e'}" stop-opacity=".18"/><stop offset="1" stop-color="${up ? '#10b981' : '#f43f5e'}" stop-opacity="0"/></linearGradient></defs>
-    ${ticks.map((t) => `<line x1="${P.l}" x2="${W - P.r}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" stroke-width="1"/><text x="${W - P.r + 6}" y="${y(t) + 4}" font-size="11" fill="var(--muted)" font-family="JetBrains Mono, monospace">${t.toFixed(t < 10 ? 2 : 0)}</text>`).join('')}
-    ${months.map((m) => `<text x="${x(m.i)}" y="${H - 6}" font-size="11" fill="var(--muted)" font-family="Inter, sans-serif">${m.label}</text>`).join('')}
-    <polygon points="${area}" fill="url(#g)"/>
-    <polyline points="${line(s50)}" fill="none" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/>
-    <polyline points="${line(closes)}" fill="none" stroke="${col}" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round"/>
-  </svg>`;
-}
-
 function compBlock(c) {
   const w = Math.abs(c.score) * 50;
   const left = c.score >= 0 ? 50 : 50 - w;
@@ -274,8 +238,8 @@ async function showExtended(t) {
   } catch {}
 }
 
-// The ticker page paints in two steps. A quick snapshot (price, header and the
-// 1 year chart) shows right away, then the full analysis (SEC filings, news,
+// The ticker page paints in two steps. A quick snapshot (price and header) plus
+// the chart show right away, then the full analysis (SEC filings, news,
 // social, analysts, AI note) fills in the sections below when it arrives.
 let tickerSeq = 0;
 
@@ -301,7 +265,7 @@ const headFromAnalysis = (a) => {
   return { ...a, price: tc.price, change1d: tc.change1d, ret1m: tc.ret1m, ret1y: tc.ret1y };
 };
 
-function paintShell(h, series) {
+function paintShell(h) {
   app.innerHTML = `
     ${headHtml(h)}
 
@@ -311,12 +275,14 @@ function paintShell(h, series) {
       ${skel(3)}
     </div>
 
-    <h2 class="section">Price, 1 year <small class="muted">dashed line: 50 day average</small></h2>
-    <div class="card chart-box" id="chartBox">${priceChart(series)}</div>
+    <h2 class="section">Price chart</h2>
+    <div class="card chart-box pc" id="chartBox"></div>
     <div id="tkRest">${h.type === 'Index' ? skel(3) : `${skel(5)}${skel(4)}`}</div>
   `;
   mountWatchButton($('#watchSlot'), h.ticker);
   showExtended(h.ticker);
+  // The chart loads its own data and is never redrawn when the analysis lands.
+  import('/chart.js').then((c) => c.mountChart($('#chartBox'), h.ticker, api));
 }
 
 async function renderTicker(t) {
@@ -330,7 +296,7 @@ async function renderTicker(t) {
     snap = await api(`/api/snapshot/${encodeURIComponent(t)}`);
   } catch {}
   if (!live()) return;
-  if (snap) paintShell(snap, snap.series);
+  if (snap) paintShell(snap);
 
   const r = await full;
   if (!live()) return;
@@ -347,7 +313,7 @@ async function renderTicker(t) {
     });
     return;
   }
-  if (!snap) paintShell(headFromAnalysis(r.a), r.a.series);
+  if (!snap) paintShell(headFromAnalysis(r.a));
   fillAnalysis(r.a);
 
   // An older cached analysis was served so the page could show at once. A new

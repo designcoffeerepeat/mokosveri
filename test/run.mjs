@@ -183,7 +183,6 @@ assert.equal(snap.name, a.name);
 assert.equal(snap.type, 'Stock');
 assert.equal(snap.price, a.technicals.price);
 assert.equal(snap.change1d, a.technicals.change1d);
-assert.equal(snap.series.length, a.series.length);
 const snapIdx = await tickerSnapshot(env, 'VIX');
 assert.equal(snapIdx.type, 'Index');
 

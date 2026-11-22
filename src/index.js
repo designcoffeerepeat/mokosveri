@@ -7,6 +7,7 @@ import { ingestForm4, refreshTickerTable, pruneOld } from './sources/sec.js';
 import { congressRecent } from './sources/congress.js';
 import { searchSymbols } from './sources/yahoo.js';
 import { optionChain } from './sources/options.js';
+import { priceHistory, RANGES } from './sources/history.js';
 import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
@@ -140,6 +141,16 @@ async function handleApi(request, env, ctx, url) {
     const t = cleanTicker(decodeURIComponent(om[1]));
     if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
     const r = await settle(optionChain(env, t, url.searchParams.get('date')));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
+  const hm = path.match(/^\/api\/chart\/([^/]+)$/);
+  if (hm) {
+    const t = cleanTicker(decodeURIComponent(hm[1]));
+    if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
+    const range = (url.searchParams.get('range') || '1y').toLowerCase();
+    if (!RANGES[range]) return json({ error: 'Unknown chart range.' }, 400);
+    const r = await settle(priceHistory(env, t, range));
     return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
   }
 
