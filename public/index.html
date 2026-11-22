@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/options.css" />
   <link rel="stylesheet" href="/account.css" />
+  <link rel="stylesheet" href="/sentiment.css" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23111'/%3E%3Cpath d='M7 21l6-6 4 4 8-9' stroke='%2334d399' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 </head>
 <body>
@@ -28,6 +29,7 @@
         </button>
         <ul class="menu-list" id="menuList" hidden>
           <li><a href="#/"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 17l5-5 4 4 7-8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Market buzz<small>Insider, Congress and social signals</small></span></a></li>
+          <li><a href="#/sentiment"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M4 17a8 8 0 0 1 16 0" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M12 17l4-5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Market sentiment<small>Famous investors, forecasters and fear gauges</small></span></a></li>
           <li><a href="#/options"><svg viewBox="0 0 24 24" width="18" height="18"><rect x="4" y="3" width="16" height="18" rx="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M8 7h8M8 12h2M14 12h2M8 16h2M14 16h2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Options calculator<small>Profit and loss by price and date</small></span></a></li>
           <li><a href="#/account"><svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg><span>Watchlists<small>Your named lists, live and sortable</small></span></a></li>
         </ul>
@@ -49,7 +51,7 @@
 
   <footer class="wrap foot">
     <p><strong>Not financial advice.</strong> Mokosveri aggregates public data (SEC Form 4 filings, congressional STOCK Act disclosures, analyst rating changes, short interest, social media and price data) and scores it with a transparent rules based model. Nothing here is a recommendation to buy or sell any security. Data can be delayed, incomplete or wrong. Past signals do not guarantee future results. Consult a licensed professional before investing.</p>
-    <p class="muted">Sources: SEC EDGAR, OpenInsider, Yahoo Finance, ApeWisdom (Reddit), StockTwits, Capitol Trades or Quiver Quantitative.</p>
+    <p class="muted">Sources: SEC EDGAR, OpenInsider, Yahoo Finance, ApeWisdom (Reddit), StockTwits, Capitol Trades or Quiver Quantitative, SEC Form 13F, CNN Fear and Greed, AAII, Polymarket and Kalshi.</p>
   </footer>
 
   <script src="/app.js" type="module"></script>

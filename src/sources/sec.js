@@ -2,7 +2,7 @@
 // SEC asks for a descriptive User-Agent with a contact address and max 10 req/s.
 import { getJSON, getText, cached, daysAgo, num, pool } from '../util.js';
 
-const secHeaders = (env) => ({
+export const secHeaders = (env) => ({
   'User-Agent': env.SEC_USER_AGENT || 'Mokosveri Research contact@example.com',
   'Accept-Encoding': 'gzip, deflate',
 });
