@@ -2,6 +2,8 @@
 import { mountWatchButton } from './session.js';
 // Coins with long-term power law and rainbow models (kept in step with public/cryptolong.js).
 const CRYPTO_LONG = /^(BTC|ETH|SOL|XRP|BNB|DOGE|ADA|LTC)-USD$/;
+// AI lenses read company filings, so they show for stocks only (not funds, indices or coins).
+const lensOk = (h) => h.type === 'Stock' && !/^[A-Z0-9]+-(USD|EUR|GBP|USDT)$/.test(h.ticker);
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
 
@@ -279,6 +281,7 @@ function paintShell(h) {
 
     <h2 class="section">Price chart</h2>
     <div class="card chart-box pc" id="chartBox"></div>
+    ${lensOk(h) ? '<div id="lensWrap"><h2 class="section">AI lenses <small class="muted">tap a question, answered from real filings and prices</small></h2><div id="lensBox"></div></div>' : ''}
     ${CRYPTO_LONG.test(h.ticker) ? '<h2 class="section">Long-term models <small class="muted">power law and rainbow</small></h2><div id="cryptoBox"></div>' : ''}
     <div id="tkRest">${h.type === 'Index' ? skel(3) : `${skel(5)}${skel(4)}`}</div>
   `;
@@ -286,6 +289,8 @@ function paintShell(h) {
   showExtended(h.ticker);
   // The chart loads its own data and is never redrawn when the analysis lands.
   import('/chart.js').then((c) => c.mountChart($('#chartBox'), h.ticker, api));
+  // Lenses only fetch when a tile is tapped, so mounting them costs nothing.
+  if (lensOk(h)) import('/lenses.js').then((l) => $('#lensBox') && l.mountLenses($('#lensBox'), h.ticker, api));
   if (CRYPTO_LONG.test(h.ticker)) import('/cryptolong.js').then((c) => c.mountCryptoLong($('#cryptoBox'), h.ticker, api));
 }
 
@@ -430,6 +435,8 @@ function fillAnalysis(a) {
 
   const srcNames = { price: 'Prices', benchmark: 'S&P 500 benchmark', yahooFundamentals: 'Analysts and short interest', news: 'News', stocktwits: 'StockTwits', reddit: 'Reddit', congress: 'Congress', secForm4: 'SEC Form 4' };
 
+  // The quick snapshot can mistake a fund for a stock; lenses are for stocks.
+  if (!lensOk(a) && $('#lensWrap')) $('#lensWrap').remove();
   $('#tkName').textContent = a.name;
   $('#tkSub').innerHTML = subLine(a);
   $('#tkTop').innerHTML = `

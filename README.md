@@ -21,6 +21,11 @@ Manual deploy (only if Builds is unavailable):
   - `ADMIN_TOKEN`: lets you trigger jobs via POST /api/admin/{ingest|buzz|daily} with header x-admin-token.
   - `QUIVER_API_KEY` or `FMP_API_KEY`: more reliable congressional trade data (free Capitol Trades feed is used otherwise).
 
+## AI lenses
+Each stock page has six AI lenses (stress test my thesis, margin trends, earnings quality, chart vs fundamentals, macro stress test, moat check). A lens runs only when tapped. It reads quarterly figures from SEC XBRL filings, the latest earnings press release (8-K), valuation and estimates from Yahoo, and the chart, then asks Workers AI for a short structured read. Results are cached for 12 hours per stock and lens.
+- Model: `@cf/meta/llama-3.3-70b-instruct-fp8-fast` by default. Set `LENS_MODEL` in wrangler.toml [vars] to change it; it falls back to `AI_MODEL` if the main model fails.
+- Limits: 20 new lens runs per IP per hour and 300 per day site wide (saved reads do not count).
+
 ## Test offline
     npm test
 
