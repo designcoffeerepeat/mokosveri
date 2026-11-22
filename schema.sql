@@ -94,5 +94,6 @@ CREATE TABLE IF NOT EXISTS watchlist_items (
   ticker TEXT NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
   added_at INTEGER NOT NULL,
+  added_price REAL,
   PRIMARY KEY (list_id, ticker)
 );
