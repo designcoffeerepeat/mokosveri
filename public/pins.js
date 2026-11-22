@@ -109,23 +109,43 @@ function chip(t) {
   return `<a class="pin" data-t="${esc(t)}" href="#/t/${encodeURIComponent(t)}" title="${esc(title)}"><b>${esc(t)}</b>${body}</a>`;
 }
 
+// The chips sit in a horizontal scroller. The edit and done buttons stay
+// outside it so they are always visible.
+const track = () => bar && bar.querySelector('.pins-track');
+
+// Fade an edge only while there is more to see in that direction.
+function updateFades() {
+  const el = track();
+  if (!el) return;
+  const max = el.scrollWidth - el.clientWidth;
+  el.classList.toggle('fade-l', el.scrollLeft > 2);
+  el.classList.toggle('fade-r', max - el.scrollLeft > 2);
+}
+
 function render() {
   if (!bar) return;
+  // Prices refresh by re-rendering, so keep where the person scrolled to.
+  const old = track();
+  const left = old ? old.scrollLeft : 0;
   if (editing) {
     bar.innerHTML = `<div class="wrap pins-inner editing">
-      ${pins.map((t) => `<span class="pin edit"><b>${esc(t)}</b><button type="button" class="pin-x" data-t="${esc(t)}" aria-label="Remove ${esc(t)}">&times;</button></span>`).join('')}
-      ${pins.length < MAX ? `<form class="pin-add" autocomplete="off"><input type="text" maxlength="10" placeholder="Add ticker" aria-label="Add a ticker to pin" spellcheck="false" /><button type="submit">Add</button></form>` : `<span class="muted pin-note">${MAX} max</span>`}
+      <div class="pins-track">
+        ${pins.map((t) => `<span class="pin edit"><b>${esc(t)}</b><button type="button" class="pin-x" data-t="${esc(t)}" aria-label="Remove ${esc(t)}">&times;</button></span>`).join('')}
+        ${pins.length < MAX ? `<form class="pin-add" autocomplete="off"><input type="text" maxlength="10" placeholder="Add ticker" aria-label="Add a ticker to pin" spellcheck="false" /><button type="submit">Add</button></form>` : `<span class="muted pin-note">${MAX} max</span>`}
+        <span class="pin-msg muted" role="status"></span>
+      </div>
       <button type="button" class="pin-done">Done</button>
-      <span class="pin-msg muted" role="status"></span>
     </div>`;
     const input = bar.querySelector('.pin-add input');
     if (input) input.focus();
-    return;
+  } else {
+    bar.innerHTML = `<div class="wrap pins-inner">
+      <div class="pins-track">${pins.length ? pins.map(chip).join('') : '<span class="muted pin-note">Pin up to 6 tickers here for quick prices.</span>'}</div>
+      <button type="button" class="pin-edit" aria-label="Edit pinned tickers" title="Edit pinned tickers"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>${pins.length ? '' : '<span>Add</span>'}</button>
+    </div>`;
+    track().scrollLeft = left;
   }
-  bar.innerHTML = `<div class="wrap pins-inner">
-    ${pins.length ? pins.map(chip).join('') : '<span class="muted pin-note">Pin up to 6 tickers here for quick prices.</span>'}
-    <button type="button" class="pin-edit" aria-label="Edit pinned tickers" title="Edit pinned tickers"><svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>${pins.length ? '' : '<span>Add</span>'}</button>
-  </div>`;
+  updateFades();
 }
 
 if (bar) {
@@ -166,6 +186,60 @@ if (bar) {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') refresh();
   });
+
+  // Scrolling: touch swipe and trackpads work natively. A plain mouse wheel
+  // scrolls sideways too, and a mouse can drag the strip.
+  bar.addEventListener('scroll', updateFades, true); // scroll does not bubble
+  window.addEventListener('resize', updateFades);
+  bar.addEventListener(
+    'wheel',
+    (e) => {
+      const el = track();
+      if (!el || el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
+      const max = el.scrollWidth - el.clientWidth;
+      // At either end, let the page scroll as usual.
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+    },
+    { passive: false }
+  );
+  let dragged = false;
+  bar.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.pins-track');
+    if (!el || e.pointerType !== 'mouse' || e.button !== 0 || e.target.closest('input, button') || el.scrollWidth <= el.clientWidth) return;
+    const x0 = e.clientX;
+    const s0 = el.scrollLeft;
+    dragged = false;
+    const move = (ev) => {
+      const dx = ev.clientX - x0;
+      if (!dragged && Math.abs(dx) < 5) return;
+      if (!dragged) el.classList.add('dragging');
+      dragged = true;
+      el.scrollLeft = s0 - dx;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      el.classList.remove('dragging');
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  });
+  // A drag should not also open the ticker it started on.
+  bar.addEventListener(
+    'click',
+    (e) => {
+      if (!dragged) return;
+      dragged = false;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true
+  );
+  bar.addEventListener('dragstart', (e) => e.target.closest && e.target.closest('a.pin') && e.preventDefault());
   window.addEventListener('auth-change', load);
   load();
 }
