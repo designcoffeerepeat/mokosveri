@@ -67,7 +67,12 @@ const JOBS = { ingest: runIngest, buzz: runBuzz, daily: runDaily };
 // of sharing one with the Form 4 ingest. It warms the D1 cache that
 // /api/events reads, so visitors see a full calendar on the first load.
 // 1.2x the per-visit budget is about 35 fetches, well under the free plan's 50.
-export const EVENTS_CRON = '5,35 * * * *';
+// It runs at 6 AM, noon and 6 PM New York time on weekdays. Cron is UTC, so it
+// fires at both the daylight saving and standard time hours and the handler
+// skips the run that is not one of those New York hours.
+export const EVENTS_CRON = '5 10,11,16,17,22,23 * * 1-5';
+export const EVENTS_HOURS_ET = [6, 12, 18];
+export const nyHour = (ms) => Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hourCycle: 'h23' }).format(new Date(ms)));
 async function runEvents(env) {
   const d = await buildEvents(env, { budgetScale: 1.2 });
   const feeds = Object.fromEntries(Object.entries(d.feeds || {}).map(([k, v]) => [k, v.ok ? v.note || 'ok' : `error: ${v.note}`]));
@@ -292,6 +297,7 @@ export default {
 
   async scheduled(event, env, ctx) {
     if (event.cron === EVENTS_CRON) {
+      if (!EVENTS_HOURS_ET.includes(nyHour(event.scheduledTime ?? Date.now()))) return;
       ctx.waitUntil(runEvents(env).catch((e) => logJob(env, 'events', { error: String(e && e.message ? e.message : e) })));
       return;
     }
