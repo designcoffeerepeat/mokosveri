@@ -244,3 +244,12 @@ td.flash-down { animation: flashDown 1.4s ease-out; }
   .wl-ad-sub { display: block; margin-top: 1px; }
   .wl-ad-sub .wl-added { padding: 7px 10px 7px 0; margin: -4px 0; font: 11px var(--sans); }
 }
+
+/* Home page: futures panel above the watchlists */
+.home-side > div + div:not(:empty) { margin-top: 14px; }
+.fut-body { padding-top: 2px; }
+.fut-tbl td:first-child { white-space: nowrap; }
+.fut-name { font-weight: 500; }
+.fut-sym { margin-left: 6px; font-size: 11px; }
+.fut-group th { padding: 8px 8px 2px; font: 600 10.5px var(--sans); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); text-align: left; border-bottom: 0; }
+.fut-tbl tbody tr.fut-group:hover th { background: none; }
