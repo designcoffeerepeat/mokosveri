@@ -62,6 +62,19 @@ async function runDaily(env) {
 const JOB_EVERY = { ingest: 10 * 60e3, buzz: 30 * 60e3, daily: 24 * 3600e3 };
 const JOBS = { ingest: runIngest, buzz: runBuzz, daily: runDaily };
 
+// The market events calendar has its own cron (EVENTS_CRON in wrangler.toml)
+// so its feed fetches get a fresh per-invocation subrequest allowance instead
+// of sharing one with the Form 4 ingest. It warms the D1 cache that
+// /api/events reads, so visitors see a full calendar on the first load.
+// 1.2x the per-visit budget is about 35 fetches, well under the free plan's 50.
+export const EVENTS_CRON = '5,35 * * * *';
+async function runEvents(env) {
+  const d = await buildEvents(env, { budgetScale: 1.2 });
+  const feeds = Object.fromEntries(Object.entries(d.feeds || {}).map(([k, v]) => [k, v.ok ? v.note || 'ok' : `error: ${v.note}`]));
+  await logJob(env, 'events', { events: (d.events || []).length, feeds });
+  return feeds;
+}
+
 async function claimJob(env, name) {
   const now = Date.now();
   const row = await env.DB.prepare('SELECT v FROM kvstate WHERE k = ?').bind(`last:${name}`).first();
@@ -234,7 +247,7 @@ async function handleApi(request, env, ctx, url) {
   }
 
   if (path === '/api/status') {
-    const names = ['buzz', 'form4', 'daily', 'tickers'];
+    const names = ['buzz', 'form4', 'daily', 'tickers', 'events'];
     const jobs = {};
     for (const n of names) jobs[n] = await env.CACHE.get(`job:${n}`, 'json');
     let counts = null;
@@ -253,11 +266,11 @@ async function handleApi(request, env, ctx, url) {
     });
   }
 
-  const adm = path.match(/^\/api\/admin\/(buzz|ingest|daily)$/);
+  const adm = path.match(/^\/api\/admin\/(buzz|ingest|daily|events)$/);
   if (adm) {
     if (!env.ADMIN_TOKEN || request.headers.get('x-admin-token') !== env.ADMIN_TOKEN) return json({ error: 'Unauthorized' }, 401);
     const job = adm[1];
-    const r = await settle(job === 'buzz' ? runBuzz(env).then((b) => b.status) : job === 'ingest' ? runIngest(env) : runDaily(env));
+    const r = await settle(job === 'buzz' ? runBuzz(env).then((b) => b.status) : job === 'ingest' ? runIngest(env) : job === 'events' ? runEvents(env) : runDaily(env));
     return json(r);
   }
 
@@ -278,6 +291,10 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    if (event.cron === EVENTS_CRON) {
+      ctx.waitUntil(runEvents(env).catch((e) => logJob(env, 'events', { error: String(e && e.message ? e.message : e) })));
+      return;
+    }
     ctx.waitUntil(runDueJobs(env));
   },
 };

@@ -4,12 +4,24 @@
 
 Stock and ETF research site on Cloudflare Workers (static assets + API + cron jobs, KV cache, D1 database).
 
-## Deploy
-Deploys run automatically: every push to `main` on GitHub triggers Cloudflare Workers Builds, which runs
+## Deploy and scheduled jobs (all on Cloudflare, no GitHub Actions)
+Everything runs on Cloudflare's free tier. The repo has no GitHub Actions workflows.
 
-    npx wrangler d1 migrations apply mokosveri-db --remote && npx wrangler deploy
+**Deploys.** Cloudflare Workers Builds is connected to this GitHub repo. Every push to `main` builds and deploys:
 
-so new files in `migrations/` are applied before the new code goes live. To deploy, commit and push to `main`.
+- Build command: `npm test` (a failing offline test stops the deploy)
+- Deploy command: `npx wrangler d1 migrations apply mokosveri-db --remote && npx wrangler deploy`
+
+so new files in `migrations/` are applied before the new code goes live. Pull request branches get preview builds. To deploy, commit and push to `main`.
+
+To connect it (one time, in the Cloudflare dashboard): Workers & Pages, open `mokosveri`, Settings, Build, Connect, pick GitHub and `designcoffeerepeat/mokosveri`, branch `main`, then enter the two commands above.
+
+**Scheduled jobs.** Cron Triggers in `wrangler.toml` run the Worker's `scheduled()` handler; they are deployed with the Worker, so nothing else needs setting up.
+
+- `*/10 * * * *`: Form 4 insider ingest (every 10 min), buzz list (every 30 min), ticker table and cleanup (daily).
+- `5,35 * * * *`: market events refresh. Pulls the live calendars into the D1 cache so `/api/events` loads full on the first visit.
+
+Last run of each job: `/api/status`. Run one by hand (needs the `ADMIN_TOKEN` secret): `POST /api/admin/{ingest|buzz|daily|events}` with header `x-admin-token`. Cron runs are also listed in the dashboard under the Worker's Settings, Trigger events, and in its logs.
 
 Manual deploy (only if Builds is unavailable):
 
@@ -20,7 +32,7 @@ Manual deploy (only if Builds is unavailable):
 ## Optional settings
 - `SEC_USER_AGENT` (in wrangler.toml): SEC asks for "Name contact@email". Replace the placeholder.
 - Secrets (set with `npx wrangler secret put NAME`):
-  - `ADMIN_TOKEN`: lets you trigger jobs via POST /api/admin/{ingest|buzz|daily} with header x-admin-token.
+  - `ADMIN_TOKEN`: lets you trigger jobs via POST /api/admin/{ingest|buzz|daily|events} with header x-admin-token.
   - `QUIVER_API_KEY` or `FMP_API_KEY`: more reliable congressional trade data (free Capitol Trades feed is used otherwise).
 
 ## AI lenses

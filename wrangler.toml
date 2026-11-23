@@ -19,9 +19,12 @@ database_name = "mokosveri-db"
 database_id = "dd809369-37a9-45e8-9ea2-025f0bb3e0f7"
 
 [triggers]
-# One cron (Workers Free allows 5 per account). It runs whichever jobs are due:
-# Form 4 ingest every 10 min, buzz list every 30 min, ticker refresh daily.
-crons = ["*/10 * * * *"]
+# Two crons (Workers Free allows 5 per account), run by Cloudflare itself, no
+# GitHub Actions involved. The first runs whichever jobs are due: Form 4 ingest
+# every 10 min, buzz list every 30 min, ticker refresh daily. The second
+# refreshes the market events calendar at :05 and :35; it must match
+# EVENTS_CRON in src/index.js.
+crons = ["*/10 * * * *", "5,35 * * * *"]
 
 [ai]
 binding = "AI"
