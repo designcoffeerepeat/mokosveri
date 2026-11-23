@@ -22,9 +22,10 @@ database_id = "dd809369-37a9-45e8-9ea2-025f0bb3e0f7"
 # Two crons (Workers Free allows 5 per account), run by Cloudflare itself, no
 # GitHub Actions involved. The first runs whichever jobs are due: Form 4 ingest
 # every 10 min, buzz list every 30 min, ticker refresh daily. The second
-# refreshes the market events calendar at :05 and :35; it must match
-# EVENTS_CRON in src/index.js.
-crons = ["*/10 * * * *", "5,35 * * * *"]
+# refreshes the market events calendar at 6:05 AM, 12:05 PM and 6:05 PM New
+# York time on weekdays (listed in UTC for both daylight and standard time;
+# the code skips the off hour). It must match EVENTS_CRON in src/index.js.
+crons = ["*/10 * * * *", "5 10,11,16,17,22,23 * * 1-5"]
 
 [ai]
 binding = "AI"

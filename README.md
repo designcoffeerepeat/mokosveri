@@ -19,7 +19,7 @@ To connect it (one time, in the Cloudflare dashboard): Workers & Pages, open `mo
 **Scheduled jobs.** Cron Triggers in `wrangler.toml` run the Worker's `scheduled()` handler; they are deployed with the Worker, so nothing else needs setting up.
 
 - `*/10 * * * *`: Form 4 insider ingest (every 10 min), buzz list (every 30 min), ticker table and cleanup (daily).
-- `5,35 * * * *`: market events refresh. Pulls the live calendars into the D1 cache so `/api/events` loads full on the first visit.
+- `5 10,11,16,17,22,23 * * 1-5`: market events refresh at 6:05 AM, 12:05 PM and 6:05 PM New York time on weekdays (the UTC list covers daylight and standard time; the code skips the off hour). Pulls the live calendars into the D1 cache so `/api/events` loads full on the first visit.
 
 Last run of each job: `/api/status`. Run one by hand (needs the `ADMIN_TOKEN` secret): `POST /api/admin/{ingest|buzz|daily|events}` with header `x-admin-token`. Cron runs are also listed in the dashboard under the Worker's Settings, Trigger events, and in its logs.
 
