@@ -9,6 +9,7 @@ import { searchSymbols } from './sources/yahoo.js';
 import { optionChain } from './sources/options.js';
 import { priceHistory, RANGES } from './sources/history.js';
 import { cryptoLong } from './sources/cryptolong.js';
+import { futuresBoard } from './sources/futures.js';
 import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
@@ -86,6 +87,8 @@ async function handleApi(request, env, ctx, url) {
   // never eat into their per-request limits.
   const own = (await handleAuth(request, env, path)) || (await handleWatchlist(request, env, path)) || (await handlePins(request, env, path, request.headers.get('cf-connecting-ip') || 'local'));
   if (own) return own;
+  // Futures panel on the home page, polled every few seconds like watchlists.
+  if (path === '/api/futures') return json(await futuresBoard(env));
   if (request.method === 'GET' && !url.pathname.startsWith('/api/admin')) ctx.waitUntil(runDueJobs(env, ['ingest', 'daily']));
 
   if (path === '/api/buzz') {

@@ -140,7 +140,7 @@ async function renderHome() {
   // The same element is moved into each fresh layout, so it keeps its state.
   const listsEl = document.createElement('aside');
   listsEl.className = 'home-side';
-  listsEl.setAttribute('aria-label', 'Your watchlists');
+  listsEl.setAttribute('aria-label', 'Futures and your watchlists');
   const placeLists = () => {
     const main = document.createElement('div');
     main.className = 'home-main';
@@ -150,7 +150,12 @@ async function renderHome() {
     grid.append(main, listsEl);
     app.append(grid);
   };
-  import('/homelists.js').then((m) => m.mountHomeLists(listsEl));
+  // Futures sit above the watchlists in the same column.
+  const futEl = document.createElement('div');
+  const wlEl = document.createElement('div');
+  listsEl.append(futEl, wlEl);
+  import('/futures.js').then((m) => m.mountFutures(futEl));
+  import('/homelists.js').then((m) => m.mountHomeLists(wlEl));
   document.title = 'Mokosveri Research';
   app.innerHTML = `<section class="hero"><h1>What the market is buzzing about</h1>
     <p>Equities drawing unusual attention from insiders, Congress, Wall Street and social media, scored for the odds of a significant move. Search any ticker above for a full breakdown.</p></section>${loading('Gathering buzz, insider filings and price data…')}`;
