@@ -25,6 +25,13 @@ assert.equal(d.yieldPct, d.ttmYieldPct);
 d = dividendInfo({ summaryDetail: { yield: { raw: 0 }, dividendYield: { raw: 0.015 } } }, [], 100);
 assert.equal(d.yieldPct, 1.5);
 
+// Odd Yahoo shapes (empty object or text dates) never throw.
+d = dividendInfo({ summaryDetail: { yield: { raw: 0.03 }, exDividendDate: {} } }, [{ t: 'x', amount: 0.2 }, { t: now - day, amount: 0.3 }], 30);
+assert.equal(d.exDate, null);
+assert.equal(d.payments12m, 1);
+d = dividendInfo({ summaryDetail: { yield: { raw: 0.03 }, exDividendDate: { raw: '2026-12-10' } } }, [], 30);
+assert.equal(d.exDate, '2026-12-10');
+
 // Nothing at all: no dividend block.
 assert.equal(dividendInfo({}, [], 100), null);
 
