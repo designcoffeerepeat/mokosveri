@@ -17,6 +17,7 @@ import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
 import { dividendsPage } from './dividends.js';
 import { buildBreakout } from './breakout.js';
+import { radarPage } from './radar.js';
 
 const BUZZ_KEY = 'buzz:v1';
 const BREAKOUT_KEY = 'breakout:v1';
@@ -127,6 +128,12 @@ async function handleApi(request, env, ctx, url) {
       b = await runBreakout(env);
     } else ctx.waitUntil(runDueJobs(env, ['breakout']));
     return json(b);
+  }
+  // Under the radar picks. Handled before the background jobs are kicked off
+  // so its quote, chart and news fetches get this request's whole budget.
+  if (path === '/api/radar') {
+    const r = await settle(radarPage(env, (p) => ctx.waitUntil(p)));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
   }
   if (request.method === 'GET' && !url.pathname.startsWith('/api/admin')) ctx.waitUntil(runDueJobs(env, ['ingest', 'daily']));
 
