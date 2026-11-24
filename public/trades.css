@@ -1,0 +1,31 @@
+/* Insider and Congress trades page, plus the expandable home page tables */
+.tr-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 22px 0 14px; border-bottom: 1px solid var(--line); }
+.tr-tabs a { padding: 9px 12px; margin-bottom: -1px; text-decoration: none; color: var(--ink-2); font: 500 14px var(--sans); border-bottom: 2px solid transparent; white-space: nowrap; }
+.tr-tabs a:hover { color: var(--ink); }
+.tr-tabs a[aria-current='page'] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+.tr-n { font: 500 11px var(--mono); color: var(--muted); background: var(--surface-2); border-radius: 99px; padding: 1px 7px; margin-left: 4px; }
+.tr-bar { margin-bottom: 10px; }
+.tr-search { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); flex: 1 1 220px; max-width: 320px; }
+.tr-search input { border: 0; background: transparent; color: var(--ink); font: 13px var(--sans); padding: 8px 0; width: 100%; outline: none; }
+.tr-search:focus-within { border-color: var(--ink-2); }
+.tr-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
+.tr-count { margin: 4px 0 8px; }
+.tr-tbl td { vertical-align: middle; }
+.tr-sub { font-size: 12px; max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-title { font-size: 12.5px; color: var(--ink-2); max-width: 200px; }
+.tr-more { display: flex; justify-content: center; margin: 14px 0; }
+.tr-more:empty { display: none; }
+
+/* Home page: top rows plus a toggle and a link to the full page */
+.tbl-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); }
+.tbl-foot a { font: 500 13px var(--sans); color: var(--ink); text-decoration: none; }
+.tbl-foot a:hover { text-decoration: underline; }
+.xp-rows tr.xp-extra { display: none; }
+.xp-rows.open tr.xp-extra { display: table-row; }
+/* Home shows 10 rows before expanding; drop the 10th row's rule so it does not double the footer's. */
+.xp-rows:not(.open) tbody tr:nth-child(10) td { border-bottom: 0; }
+
+@media (max-width: 640px) {
+  .tr-search { max-width: none; flex-basis: 100%; }
+  .tr-tabs a { padding: 8px 9px; font-size: 13px; }
+}

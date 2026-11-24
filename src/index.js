@@ -19,6 +19,7 @@ import { rateLimit } from './auth.js';
 import { dividendsPage } from './dividends.js';
 import { buildBreakout } from './breakout.js';
 import { radarPage } from './radar.js';
+import { buildTrades, TRADES_KEY } from './trades.js';
 
 const BUZZ_KEY = 'buzz:v1';
 const BREAKOUT_KEY = 'breakout:v1';
@@ -143,6 +144,17 @@ async function handleApi(request, env, ctx, url) {
     if (!b) b = await runBuzz(env);
     else ctx.waitUntil(runDueJobs(env, ['buzz']));
     return json(b);
+  }
+
+  // Full insider buying and Congress trades lists. Kept for 30 minutes.
+  if (path === '/api/trades') {
+    const hit = await env.CACHE.get(TRADES_KEY, 'json');
+    if (hit && Date.now() - Date.parse(hit.updated) < 30 * 60e3) return json(hit);
+    const r = await settle(buildTrades(env));
+    if (!r.ok) return hit ? json(hit) : json({ error: r.error }, 502);
+    if (r.value.purchases.length || r.value.congress.length) ctx.waitUntil(env.CACHE.put(TRADES_KEY, JSON.stringify(r.value), { expirationTtl: 86400 }));
+    else if (hit) return json(hit);
+    return json(r.value);
   }
 
   // Quick first paint for the ticker page: price, header and the 1y series.

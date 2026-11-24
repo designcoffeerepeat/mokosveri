@@ -34,10 +34,10 @@ async function quiverRecent(env) {
   );
 }
 
-async function fmpRecent(env) {
+async function fmpRecent(env, page = 0) {
   const [s, h] = await Promise.all([
-    getJSON(`https://financialmodelingprep.com/stable/senate-latest?page=0&limit=100&apikey=${env.FMP_API_KEY}`),
-    getJSON(`https://financialmodelingprep.com/stable/house-latest?page=0&limit=100&apikey=${env.FMP_API_KEY}`),
+    getJSON(`https://financialmodelingprep.com/stable/senate-latest?page=${page}&limit=100&apikey=${env.FMP_API_KEY}`),
+    getJSON(`https://financialmodelingprep.com/stable/house-latest?page=${page}&limit=100&apikey=${env.FMP_API_KEY}`),
   ]);
   const map = (arr, chamber) =>
     (arr || []).map((x) =>
@@ -46,8 +46,8 @@ async function fmpRecent(env) {
   return [...map(s, 'Senate'), ...map(h, 'House')];
 }
 
-async function capitolTradesRecent() {
-  const d = await getJSON('https://bff.capitoltrades.com/trades?per_page=100&page=1&sortBy=-pubDate', {
+async function capitolTradesRecent(env, page = 1) {
+  const d = await getJSON(`https://bff.capitoltrades.com/trades?per_page=100&page=${page}&sortBy=-pubDate`, {
     headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json', Origin: 'https://www.capitoltrades.com', Referer: 'https://www.capitoltrades.com/' },
   });
   return (d.data || []).map((x) =>
@@ -103,4 +103,44 @@ export async function congressForTicker(env, ticker, days = 90) {
   }
   const all = await congressRecent(env);
   return all.filter((r) => r.ticker === ticker);
+}
+
+// Several pages from one source, merged. A page that fails after the first is
+// skipped so a flaky later page never hides the rows already fetched.
+async function pages(fn, env, first, count) {
+  const out = await Promise.allSettled(Array.from({ length: count }, (_, i) => fn(env, first + i)));
+  if (out[0].status === 'rejected') throw out[0].reason;
+  return out.flatMap((r) => (r.status === 'fulfilled' ? r.value : []));
+}
+
+const tradeKey = (r) => [r.member, r.ticker, r.type, r.txDate, r.amount].join('|').toLowerCase();
+
+// Every trade disclosed in the last `days` days, for the full trades page.
+// Pulls more than the one page the buzz board uses.
+export async function congressAll(env, days = 90) {
+  return cached(env, `congress:all:${days}`, 3600, async () => {
+    const tries = [];
+    if (env.QUIVER_API_KEY) tries.push(() => quiverRecent(env));
+    if (env.FMP_API_KEY) tries.push(() => pages(fmpRecent, env, 0, 3));
+    tries.push(() => pages(capitolTradesRecent, env, 1, 5));
+    let lastErr;
+    const since = daysAgo(days);
+    for (const fn of tries) {
+      try {
+        const seen = new Set();
+        const rows = (await fn())
+          .filter((r) => r.ticker && /^[A-Z.\-]{1,6}$/.test(r.ticker) && (r.filedDate || r.txDate) >= since)
+          .filter((r) => {
+            const k = tradeKey(r);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+        return rows.sort((a, b) => (b.filedDate || '').localeCompare(a.filedDate || '') || (b.txDate || '').localeCompare(a.txDate || ''));
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    throw lastErr || new Error('No congressional source');
+  });
 }
