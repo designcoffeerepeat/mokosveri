@@ -9,7 +9,7 @@ import { congressRecent } from './sources/congress.js';
 import { computeTechnicals } from './analysis/technicals.js';
 import { scoreInsider, scoreTechnical, scoreCongress, scoreSocial, composite, movePotential } from './analysis/score.js';
 
-const SKIP = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'VTI', 'USD', 'CEO', 'DD', 'YOLO', 'ATH', 'IPO', 'ETF', 'AI', 'GDP', 'FOMC']);
+export const SKIP = new Set(['SPY', 'QQQ', 'IWM', 'DIA', 'VOO', 'VTI', 'USD', 'CEO', 'DD', 'YOLO', 'ATH', 'IPO', 'ETF', 'AI', 'GDP', 'FOMC']);
 
 export async function mergedInsiderBuys(env, days) {
   const [db, oi] = await Promise.all([settle(env.DB ? recentInsiderBuys(env, days, 40) : Promise.resolve([])), settle(openInsiderPurchases(days))]);
