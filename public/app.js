@@ -141,10 +141,15 @@ async function renderHome() {
   const listsEl = document.createElement('aside');
   listsEl.className = 'home-side';
   listsEl.setAttribute('aria-label', 'Your watchlists');
+  // Breakout watch panels sit above everything else and load on their own.
+  const breakEl = document.createElement('section');
+  breakEl.className = 'breakout';
+  breakEl.setAttribute('aria-label', 'Breakout watch');
+  import('/breakout.js').then((m) => m.mountBreakout(breakEl));
   const placeLists = () => {
     const main = document.createElement('div');
     main.className = 'home-main';
-    main.append(...app.childNodes);
+    main.append(breakEl, ...app.childNodes);
     const grid = document.createElement('div');
     grid.className = 'home-grid';
     grid.append(main, listsEl);

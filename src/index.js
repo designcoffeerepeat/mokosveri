@@ -16,8 +16,10 @@ import { buildEvents } from './events.js';
 import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
 import { dividendsPage } from './dividends.js';
+import { buildBreakout } from './breakout.js';
 
 const BUZZ_KEY = 'buzz:v1';
+const BREAKOUT_KEY = 'breakout:v1';
 // A ticker analysis counts as fresh for 15 minutes and is still shown, while a
 // new one is built in the background, for up to 6 hours.
 const ANALYZE_FRESH_MS = 15 * 60e3;
@@ -33,6 +35,13 @@ async function runBuzz(env) {
   const b = await buildBuzz(env);
   if (b.all.length) await env.CACHE.put(BUZZ_KEY, JSON.stringify(b));
   await logJob(env, 'buzz', { priced: b.all.length, status: b.status });
+  return b;
+}
+
+async function runBreakout(env) {
+  const b = await buildBreakout(env);
+  await env.CACHE.put(BREAKOUT_KEY, JSON.stringify(b));
+  await logJob(env, 'breakout', { picks: b.picks.map((p) => p.ticker), status: b.status });
   return b;
 }
 
@@ -60,8 +69,11 @@ async function runDaily(env) {
 
 // Jobs run from the cron trigger when one is available, and also lazily from
 // visitor traffic so the site keeps itself fresh on the Workers Free plan.
-const JOB_EVERY = { ingest: 10 * 60e3, buzz: 30 * 60e3, daily: 24 * 3600e3 };
-const JOBS = { ingest: runIngest, buzz: runBuzz, daily: runDaily };
+// The breakout watch is rebuilt hourly from visitor traffic only, in its own
+// request, so its price fetches never share a budget with the Form 4 ingest.
+const JOB_EVERY = { ingest: 10 * 60e3, buzz: 30 * 60e3, daily: 24 * 3600e3, breakout: 60 * 60e3 };
+const JOBS = { ingest: runIngest, buzz: runBuzz, daily: runDaily, breakout: runBreakout };
+const CRON_JOBS = ['ingest', 'buzz', 'daily'];
 
 // The market events calendar has its own cron (EVENTS_CRON in wrangler.toml)
 // so its feed fetches get a fresh per-invocation subrequest allowance instead
@@ -90,7 +102,7 @@ async function claimJob(env, name) {
 }
 
 async function runDueJobs(env, only = null) {
-  for (const name of only || Object.keys(JOBS)) {
+  for (const name of only || CRON_JOBS) {
     try {
       if (await claimJob(env, name)) await JOBS[name](env);
     } catch (e) {
@@ -105,6 +117,17 @@ async function handleApi(request, env, ctx, url) {
   // never eat into their per-request limits.
   const own = (await handleAuth(request, env, path)) || (await handleWatchlist(request, env, path)) || (await handlePins(request, env, path, request.headers.get('cf-connecting-ip') || 'local'));
   if (own) return own;
+
+  // Breakout watch: answered before the background jobs below are queued so a
+  // rebuild gets this request's whole fetch allowance.
+  if (path === '/api/breakout') {
+    let b = await env.CACHE.get(BREAKOUT_KEY, 'json');
+    if (!b) {
+      await env.DB.prepare('INSERT OR REPLACE INTO kvstate (k, v) VALUES (?, ?)').bind('last:breakout', JSON.stringify(Date.now())).run().catch(() => {});
+      b = await runBreakout(env);
+    } else ctx.waitUntil(runDueJobs(env, ['breakout']));
+    return json(b);
+  }
   if (request.method === 'GET' && !url.pathname.startsWith('/api/admin')) ctx.waitUntil(runDueJobs(env, ['ingest', 'daily']));
 
   if (path === '/api/buzz') {
@@ -259,7 +282,7 @@ async function handleApi(request, env, ctx, url) {
   }
 
   if (path === '/api/status') {
-    const names = ['buzz', 'form4', 'daily', 'tickers', 'events'];
+    const names = ['buzz', 'breakout', 'form4', 'daily', 'tickers', 'events'];
     const jobs = {};
     for (const n of names) jobs[n] = await env.CACHE.get(`job:${n}`, 'json');
     let counts = null;
@@ -278,11 +301,11 @@ async function handleApi(request, env, ctx, url) {
     });
   }
 
-  const adm = path.match(/^\/api\/admin\/(buzz|ingest|daily|events)$/);
+  const adm = path.match(/^\/api\/admin\/(buzz|breakout|ingest|daily|events)$/);
   if (adm) {
     if (!env.ADMIN_TOKEN || request.headers.get('x-admin-token') !== env.ADMIN_TOKEN) return json({ error: 'Unauthorized' }, 401);
     const job = adm[1];
-    const r = await settle(job === 'buzz' ? runBuzz(env).then((b) => b.status) : job === 'ingest' ? runIngest(env) : job === 'events' ? runEvents(env) : runDaily(env));
+    const r = await settle(job === 'buzz' ? runBuzz(env).then((b) => b.status) : job === 'breakout' ? runBreakout(env).then((b) => ({ picks: b.picks.map((p) => p.ticker), status: b.status })) : job === 'ingest' ? runIngest(env) : job === 'events' ? runEvents(env) : runDaily(env));
     return json(r);
   }
 
