@@ -168,14 +168,20 @@ async function renderHome() {
     placeLists();
     return;
   }
+  // The home tables show the first few rows; the rest open in place, and the
+  // full page (#/trades) has every trade in the window.
+  const SHOW = 10;
+  const extra = (i) => (i >= SHOW ? ' xp-extra' : '');
+  const foot = (n, href, full) =>
+    `<div class="tbl-foot">${n > SHOW ? `<button type="button" class="btn-ghost sm xp-btn" aria-expanded="false" data-more="Show all ${n}" data-less="Show top ${SHOW}">Show all ${n}</button>` : '<span></span>'}<a href="${href}">${full} →</a></div>`;
   const insRows = (b.insiderBuys || [])
     .map(
-      (r) => `<tr class="click" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.issuer || '')}</td><td class="num">${r.buyers}</td><td class="num">${fmtMoney(r.total_value)}</td><td>${r.csuite ? '<span class="tag buy">C-suite</span>' : ''}</td><td class="num">${shortDate(r.last_date)}</td></tr>`
+      (r, i) => `<tr class="click${extra(i)}" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.issuer || '')}</td><td class="num">${r.buyers}</td><td class="num">${fmtMoney(r.total_value)}</td><td>${r.csuite ? '<span class="tag buy">C-suite</span>' : ''}</td><td class="num">${shortDate(r.last_date)}</td></tr>`
     )
     .join('');
   const congRows = (b.congress || [])
     .map(
-      (r) => `<tr class="click" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.member)}<div class="muted" style="font-size:12px">${esc([r.chamber, r.party].filter(Boolean).join(' · '))}</div></td><td><span class="tag ${r.type === 'buy' ? 'buy' : 'sell'}">${esc(r.type)}</span></td><td class="num">${esc(r.amount || '')}</td><td class="num">${shortDate(r.txDate)}</td><td class="num">${shortDate(r.filedDate)}</td></tr>`
+      (r, i) => `<tr class="click${extra(i)}" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.member)}<div class="muted" style="font-size:12px">${esc([r.chamber, r.party].filter(Boolean).join(' · '))}</div></td><td><span class="tag ${r.type === 'buy' ? 'buy' : 'sell'}">${esc(r.type)}</span></td><td class="num">${esc(r.amount || '')}</td><td class="num">${shortDate(r.txDate)}</td><td class="num">${shortDate(r.filedDate)}</td></tr>`
     )
     .join('');
   const talked = (b.mostTalked || []).map(buzzRow).join('');
@@ -193,10 +199,10 @@ async function renderHome() {
     </div>
 
     <h2 class="section">Insider buying <small class="muted">open market purchases (Form 4, code P), last ${b.insiderDays} days</small></h2>
-    <div class="card tbl-wrap">${insRows ? `<table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Insiders</th><th class="num">Total bought</th><th></th><th class="num">Latest</th></tr></thead><tbody>${insRows}</tbody></table>` : '<div class="empty">Insider data is still loading. The SEC feed is ingested every 10 minutes.</div>'}</div>
+    <div class="card">${insRows ? `<div class="tbl-wrap xp-rows"><table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Insiders</th><th class="num">Total bought</th><th></th><th class="num">Latest</th></tr></thead><tbody>${insRows}</tbody></table></div>${foot(b.insiderBuys.length, '#/trades/insiders', 'All insider buys, searchable')}` : '<div class="empty">Insider data is still loading. The SEC feed is ingested every 10 minutes.</div>'}</div>
 
     <h2 class="section">Congress trades <small class="muted">recent STOCK Act disclosures</small></h2>
-    <div class="card tbl-wrap">${congRows ? `<table><thead><tr><th>Ticker</th><th>Member</th><th>Type</th><th class="num">Amount</th><th class="num">Traded</th><th class="num">Disclosed</th></tr></thead><tbody>${congRows}</tbody></table>` : `<div class="empty">Congressional trade feed is unavailable right now${b.status && b.status.congress && b.status.congress !== 'ok' ? ` (${esc(b.status.congress)})` : ''}.</div>`}</div>
+    <div class="card">${congRows ? `<div class="tbl-wrap xp-rows"><table><thead><tr><th>Ticker</th><th>Member</th><th>Type</th><th class="num">Amount</th><th class="num">Traded</th><th class="num">Disclosed</th></tr></thead><tbody>${congRows}</tbody></table></div>${foot(b.congress.length, '#/trades/congress', 'All Congress trades, searchable')}` : `<div class="empty">Congressional trade feed is unavailable right now${b.status && b.status.congress && b.status.congress !== 'ok' ? ` (${esc(b.status.congress)})` : ''}.</div>`}</div>
 
     ${talked ? `<h2 class="section">Most talked about on Reddit</h2><div class="card"><div class="rows">${talked}</div></div>` : ''}
 
@@ -214,6 +220,14 @@ async function renderHome() {
     </div>`;
   placeLists();
   app.querySelectorAll('tr.click').forEach((tr) => tr.addEventListener('click', () => go(tr.dataset.t)));
+  app.querySelectorAll('.xp-btn').forEach((btn) =>
+    btn.addEventListener('click', () => {
+      const box = btn.closest('.card').querySelector('.xp-rows');
+      const open = box.classList.toggle('open');
+      btn.setAttribute('aria-expanded', String(open));
+      btn.textContent = open ? btn.dataset.less : btn.dataset.more;
+    })
+  );
 }
 
 // ---------- ticker page ----------
@@ -542,6 +556,7 @@ function route() {
   if (m) renderTicker(decodeURIComponent(m[1]).toUpperCase());
   else if (/^#\/options\b/.test(location.hash)) import('/options.js').then((o) => o.renderOptions(app, api));
   else if (/^#\/sentiment\b/.test(location.hash)) import('/sentiment.js').then((o) => o.renderSentiment(app, api));
+  else if (/^#\/trades\b/.test(location.hash)) import('/trades.js').then((o) => o.renderTrades(app, api));
   else if (/^#\/radar\b/.test(location.hash)) import('/radar.js').then((o) => o.renderRadar(app, api));
   else if (/^#\/dividends\b/.test(location.hash)) import('/dividends.js').then((o) => o.renderDividends(app, api));
   else if (/^#\/events\b/.test(location.hash)) import('/events.js').then((o) => o.renderEvents(app, api));
