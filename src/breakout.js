@@ -79,6 +79,7 @@ export function insiderPart(ins) {
   pts = Math.min(35, pts);
   const who = ins.buyers >= 3 ? `Cluster buy: ${ins.buyers} insiders` : ins.buyers === 2 ? '2 insiders' : 'An insider';
   const why = [`${who} bought ${money(ins.total_value)} on the open market${ins.csuite ? ', including the C-suite' : ''}${age <= 30 ? ` (latest ${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`})` : ''}`];
+  if (ins.plan_buys) why.push(`${ins.plan_buys} of these purchases ${ins.plan_buys === 1 ? 'was' : 'were'} made under a 10b5-1 plan`);
   return { pts, why, tag: ins.buyers >= 3 ? 'Insider cluster' : 'Insider buying' };
 }
 

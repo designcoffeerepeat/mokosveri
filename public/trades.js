@@ -135,11 +135,13 @@ const SUB = {
   purchases: [['Ticker', ''], ['Company', ''], ['Title', ''], ['Shares', 'num'], ['Price', 'num'], ['Value', 'num'], ['Stake change', 'num'], ['Traded', 'num'], ['Filed', 'num']],
   congress: [['Ticker', ''], ['Type', ''], ['Amount', 'num'], ['Traded', 'num'], ['Disclosed', 'num']],
 };
+// Every insider row is a Form 4 code P purchase; flag the ones made under a 10b5-1 plan.
+const planTag = (r) => (r.plan10b5 ? ' <span class="tag plan" title="Made under a pre-scheduled Rule 10b5-1 trading plan">10b5-1</span>' : '');
 function subCells(tab, r) {
   const tk = `<td><a class="mono" href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a></td>`;
   const buy = `<td class="num">${qtyFmt(r.qty)}</td><td class="num">${pxFmt(r.price)}</td><td class="num">${money(r.value)}</td><td class="num">${esc(r.deltaOwn || '')}</td><td class="num">${shortDate(r.date)}</td><td class="num">${shortDate(r.filed)}</td>`;
-  if (tab === 'insiders') return `<td>${esc(r.owner)}</td><td class="tr-title">${esc(r.title || '')}</td>${buy}`;
-  if (tab === 'purchases') return `${tk}<td class="tr-title">${esc(r.company || '')}</td><td class="tr-title">${esc(r.title || '')}</td>${buy}`;
+  if (tab === 'insiders') return `<td>${esc(r.owner)}${planTag(r)}</td><td class="tr-title">${esc(r.title || '')}</td>${buy}`;
+  if (tab === 'purchases') return `${tk.replace('</td>', `${planTag(r)}</td>`)}<td class="tr-title">${esc(r.company || '')}</td><td class="tr-title">${esc(r.title || '')}</td>${buy}`;
   return `${tk}<td><span class="tag ${r.type === 'buy' ? 'buy' : r.type === 'sell' ? 'sell' : 'plan'}">${esc(r.type || '')}</span></td><td class="num">${esc(r.amount || '')}</td><td class="num">${shortDate(r.txDate)}</td><td class="num">${shortDate(r.filedDate)}</td>`;
 }
 const subTable = (tab, trades) =>
@@ -300,7 +302,7 @@ const NOUN = { insiders: ['company', 'companies'], purchases: ['insider', 'insid
 export async function renderTrades(app, api) {
   const tab = tabFromHash(location.hash);
   document.title = 'Insider and Congress trades · Mokosveri';
-  const hero = `<section class="hero"><h1>Insider and Congress trades</h1><p>Every open market insider purchase (SEC Form 4, code P) and every Congress trade disclosed under the STOCK Act in the window, one row per company, insider or member. Tap a row to see its trades, a ticker to open its breakdown, or a column to sort.</p>`;
+  const hero = `<section class="hero"><h1>Insider and Congress trades</h1><p>Every open market insider purchase made with the insider's own cash (SEC Form 4, code P, at a real price; grants, bonuses, option exercises and RSU conversions are left out) and every Congress trade disclosed under the STOCK Act in the window, one row per company, insider or member. Tap a row to see its trades, a ticker to open its breakdown, or a column to sort.</p>`;
   app.innerHTML = `${hero}</section><div class="loading"><div class="spinner"></div>Loading every insider purchase and Congress trade…</div>`;
   let d;
   try {

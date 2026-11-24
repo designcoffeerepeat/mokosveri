@@ -1,7 +1,7 @@
 // Offline test: mocks every upstream API with realistic fixtures and runs the
 // full analysis and buzz pipelines. Run: node test/run.mjs
 import assert from 'node:assert/strict';
-import { parseForm4 } from '../src/sources/sec.js';
+import { parseForm4, isRealPurchase } from '../src/sources/sec.js';
 import { parseOpenInsiderTable, aggregatePurchases } from '../src/sources/openinsider.js';
 import { computeTechnicals, rsi } from '../src/analysis/technicals.js';
 import { analyzeTicker } from '../src/analyze.js';
@@ -127,6 +127,32 @@ assert.equal(f.transactions[0].code, 'P');
 assert.equal(f.transactions[0].value, 201000);
 assert.equal(f.plan10b5, false);
 assert.equal(parseForm4(FORM4('S', 'x', 'CFO', 1, 1, 1, true)).plan10b5, true);
+
+// Insider buying rule: only code P at a real price, not footnoted as compensation.
+assert.equal(isRealPurchase(f.transactions[0]), true, 'plain code P buy counts');
+for (const code of ['A', 'M']) assert.equal(isRealPurchase(parseForm4(FORM4(code, 'x', 'CEO', 100, 10, 200)).transactions[0]), false, `code ${code} never counts`);
+assert.equal(isRealPurchase(parseForm4(FORM4('P', 'x', 'CEO', 100, 0, 200)).transactions[0]), false, '$0.00 price never counts');
+const withNotes = (xml, refs, notes) =>
+  xml
+    .replace('<transactionCode>', `${refs.map((r) => `<footnoteId id="${r}"/>`).join('')}<transactionCode>`)
+    .replace('<footnotes></footnotes>', `<footnotes>${Object.entries(notes).map(([id, t]) => `<footnote id="${id}">${t}</footnote>`).join('')}</footnotes>`);
+const comp = parseForm4(withNotes(FORM4('P', 'x', 'Director', 500, 12.5, 900), ['F1'], { F1: 'Shares acquired in lieu of cash director fees.' })).transactions[0];
+assert.equal(comp.comp, true);
+assert.equal(isRealPurchase(comp), false, 'compensation footnote excludes a code P line');
+const avg = parseForm4(withNotes(FORM4('P', 'x', 'CEO', 500, 12.5, 900), ['F1'], { F1: 'The price reported is a weighted average price. These shares were purchased in multiple transactions.' })).transactions[0];
+assert.equal(isRealPurchase(avg), true, 'ordinary price footnote is fine');
+assert.equal(avg.plan10b5, false);
+// A compensation note on holdings after the trade is not about the trade itself.
+const held = parseForm4(
+  FORM4('P', 'x', 'CEO', 500, 12.5, 900)
+    .replace('<sharesOwnedFollowingTransaction>', '<sharesOwnedFollowingTransaction><footnoteId id="F2"/>')
+    .replace('<footnotes></footnotes>', '<footnotes><footnote id="F2">Includes 300 restricted stock units granted in 2025.</footnote></footnotes>')
+).transactions[0];
+assert.equal(isRealPurchase(held), true, 'holdings footnote does not taint the purchase');
+const planBuy = parseForm4(withNotes(FORM4('P', 'x', 'CEO', 500, 12.5, 900), ['F1'], { F1: 'Purchased pursuant to a Rule 10b5-1 trading plan adopted May 1.' })).transactions[0];
+assert.equal(planBuy.plan10b5, true, '10b5-1 plan buy flagged');
+assert.equal(isRealPurchase(planBuy), true, '10b5-1 plan buy still counts, flagged');
+assert.equal(parseForm4(FORM4('P', 'x', 'CEO', 500, 12.5, 900, true)).transactions[0].plan10b5, true, '10b5-1 box flags each trade');
 
 const oi = parseOpenInsiderTable(OI_HTML);
 assert.equal(oi.length, 3);

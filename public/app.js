@@ -176,7 +176,7 @@ async function renderHome() {
     `<div class="tbl-foot">${n > SHOW ? `<button type="button" class="btn-ghost sm xp-btn" aria-expanded="false" data-more="Show all ${n}" data-less="Show top ${SHOW}">Show all ${n}</button>` : '<span></span>'}<a href="${href}">${full} →</a></div>`;
   const insRows = (b.insiderBuys || [])
     .map(
-      (r, i) => `<tr class="click${extra(i)}" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.issuer || '')}</td><td class="num">${r.buyers}</td><td class="num">${fmtMoney(r.total_value)}</td><td>${r.csuite ? '<span class="tag buy">C-suite</span>' : ''}</td><td class="num">${shortDate(r.last_date)}</td></tr>`
+      (r, i) => `<tr class="click${extra(i)}" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.issuer || '')}</td><td class="num">${r.buyers}</td><td class="num">${fmtMoney(r.total_value)}</td><td>${r.csuite ? '<span class="tag buy">C-suite</span>' : ''}${r.plan_buys ? ` <span class="tag plan" title="${r.plan_buys} of these purchases were made under a pre-scheduled Rule 10b5-1 trading plan">10b5-1</span>` : ''}</td><td class="num">${shortDate(r.last_date)}</td></tr>`
     )
     .join('');
   // Congress trades, one row per member; a row expands to that member's trades.
@@ -196,7 +196,7 @@ async function renderHome() {
         <div class="rows">${b.negative.map(buzzRow).join('') || '<div class="empty">Nothing scoring negative right now.</div>'}</div></div>
     </div>
 
-    <h2 class="section">Insider buying <small class="muted">open market purchases (Form 4, code P), last ${b.insiderDays} days</small></h2>
+    <h2 class="section">Insider buying <small class="muted">open market purchases with their own cash (Form 4, code P), last ${b.insiderDays} days. Grants, bonuses, option exercises and $0 trades are excluded.</small></h2>
     <div class="card">${insRows ? `<div class="tbl-wrap xp-rows"><table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Insiders</th><th class="num">Total bought</th><th></th><th class="num">Latest</th></tr></thead><tbody>${insRows}</tbody></table></div>${foot(b.insiderBuys.length, '#/trades/insiders', 'All insider buys, searchable')}` : '<div class="empty">Insider data is still loading. The SEC feed is ingested every 10 minutes.</div>'}</div>
 
     <h2 class="section">Congress trades <small class="muted">recent STOCK Act disclosures, by member. Tap a name for their trades</small></h2>
@@ -208,7 +208,7 @@ async function renderHome() {
     <div class="card method">
       Every ticker gets a score from <b>-100</b> (strongly bearish) to <b>+100</b> (strongly bullish), a weighted blend of:
       <ul>
-        <li><b>Insiders (23%)</b>: open market buys in the last 30 days, extra weight for cluster buys (3+ insiders), C-suite buyers, large dollar amounts and big stake increases. Discretionary sales count against; pre-planned 10b5-1 sales barely count.</li>
+        <li><b>Insiders (23%)</b>: open market buys (Form 4 code P at a real price, never grants, awards, option exercises or RSU conversions) in the last 30 days, extra weight for cluster buys (3+ insiders), C-suite buyers, large dollar amounts and big stake increases. Discretionary sales count against; pre-planned 10b5-1 sales barely count.</li>
         <li><b>Technicals (22%)</b>: trend vs 50 and 200 day averages, MACD, RSI, unusual volume, 52 week breakouts, on balance volume and strength vs the S&amp;P 500.</li>
         <li><b>Analysts (14%)</b>: upgrades and downgrades in the last 30 days, price target changes and implied upside.</li>
         <li><b>Latest news (12%)</b>: headlines from the last 10 days across Yahoo Finance and Google News, each rated positive or negative, with the newest stories counting most.</li>
@@ -404,7 +404,7 @@ function fillAnalysis(a) {
           .slice(0, 30)
           .map((x) => {
             const chg = x.ownedAfter && x.shares ? (x.code === 'P' ? x.shares / Math.max(x.ownedAfter - x.shares, 1) : -x.shares / (x.ownedAfter + x.shares)) * 100 : null;
-            return `<tr><td>${esc(x.owner)}<div class="muted" style="font-size:12px">${esc(x.title || '')}</div></td><td><span class="tag ${x.code === 'P' ? 'buy' : 'sell'}">${x.code === 'P' ? 'Buy' : 'Sell'}</span> ${x.plan10b5 ? '<span class="tag plan" title="Pre-scheduled 10b5-1 trading plan">10b5-1</span>' : ''}</td><td class="num">${fmtShares(x.shares)}</td><td class="num">${fmtNum(x.price)}</td><td class="num">${fmtMoney(x.value)}</td><td class="num ${cls(chg)}">${chg == null ? 'n/a' : fmtPct(Math.max(Math.min(chg, 999), -100), 0)}</td><td class="num">${shortDate(x.date)}</td><td>${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener" class="muted">SEC</a>` : ''}</td></tr>`;
+            return `<tr><td>${esc(x.owner)}<div class="muted" style="font-size:12px">${esc(x.title || '')}</div></td><td><span class="tag ${x.code === 'P' ? 'buy' : 'sell'}" title="${x.code === 'P' ? 'Form 4 code P: open market purchase with their own cash' : 'Form 4 code S: open market sale'}">${x.code === 'P' ? 'Buy' : 'Sell'} · ${esc(x.code)}</span> ${x.plan10b5 ? '<span class="tag plan" title="Made under a pre-scheduled Rule 10b5-1 trading plan">10b5-1</span>' : ''}</td><td class="num">${fmtShares(x.shares)}</td><td class="num">${fmtNum(x.price)}</td><td class="num">${fmtMoney(x.value)}</td><td class="num ${cls(chg)}">${chg == null ? 'n/a' : fmtPct(Math.max(Math.min(chg, 999), -100), 0)}</td><td class="num">${shortDate(x.date)}</td><td>${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener" class="muted">SEC</a>` : ''}</td></tr>`;
           })
           .join('')}</tbody></table>`
       : `<div class="empty">No open market insider buys or sells in the last ${a.insiderDays} days${a.insider.filingsChecked != null ? ` (${a.insider.filingsChecked} Form 4 filings checked; the rest were grants, option exercises or tax withholding)` : ''}.</div>`;

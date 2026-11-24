@@ -15,8 +15,8 @@ export async function dbPurchases(env, days) {
   if (!env.DB) return [];
   const r = await env.DB.prepare(
     `SELECT accession, ticker, MAX(issuer) AS company, owner, MAX(title) AS title, MAX(tx_date) AS date, MAX(filed_date) AS filed,
-       SUM(shares) AS qty, SUM(value) AS value, MAX(owned_after) AS owned_after
-     FROM insider_tx WHERE code = 'P' AND tx_date >= ? AND ticker IS NOT NULL AND ticker != '' AND ticker != 'NONE' AND value > 0
+       SUM(shares) AS qty, SUM(value) AS value, MAX(owned_after) AS owned_after, MAX(plan_10b5) AS plan
+     FROM insider_tx WHERE code = 'P' AND tx_date >= ? AND ticker IS NOT NULL AND ticker != '' AND ticker != 'NONE' AND price > 0 AND value > 0
      GROUP BY accession, owner_cik, ticker ORDER BY date DESC LIMIT 3000`
   )
     .bind(daysAgo(days))
@@ -34,6 +34,8 @@ export async function dbPurchases(env, days) {
     ownedAfter: x.owned_after || null,
     deltaOwn: x.owned_after && x.qty && x.owned_after > x.qty ? `+${Math.round((x.qty / (x.owned_after - x.qty)) * 100)}%` : x.owned_after && x.qty ? 'New' : '',
     accession: x.accession,
+    code: 'P',
+    plan10b5: !!x.plan,
     source: 'SEC',
   }));
 }
@@ -68,6 +70,8 @@ export function mergePurchases(sec, oi) {
       ownedAfter: null,
       deltaOwn: r.deltaOwn || '',
       accession: null,
+      code: 'P',
+      plan10b5: null, // OpenInsider does not report the 10b5-1 box
       source: 'OpenInsider',
     });
   }
