@@ -369,11 +369,11 @@ export function ruleEvents(from, to) {
 }
 
 // ---------- live feeds ----------
-const NQ = { 'User-Agent': BROWSER_UA, Accept: 'application/json, text/plain, */*', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' };
+export const NQ = { 'User-Agent': BROWSER_UA, Accept: 'application/json, text/plain, */*', Origin: 'https://www.nasdaq.com', Referer: 'https://www.nasdaq.com/' };
 
 // Read through cache with a fetch budget: a miss only fetches while budget
 // remains, otherwise it reports "skipped" so the page can say it is still loading.
-async function cacheGet(env, key) {
+export async function cacheGet(env, key) {
   try {
     if (env.DB) {
       const row = await env.DB.prepare('SELECT v, exp FROM cache WHERE k = ?').bind(key).first();
@@ -389,7 +389,7 @@ async function cachePut(env, key, ttl, val) {
     else if (env.CACHE) await env.CACHE.put(key, JSON.stringify(val), { expirationTtl: Math.max(60, ttl) });
   } catch {}
 }
-async function budgeted(env, budget, key, ttl, cost, fn) {
+export async function budgeted(env, budget, key, ttl, cost, fn) {
   const hit = await cacheGet(env, key);
   if (hit && hit.__err) throw new Error(hit.__err);
   if (hit != null) return hit;
@@ -409,7 +409,7 @@ async function budgeted(env, budget, key, ttl, cost, fn) {
   if (val != null) await cachePut(env, key, ttl, val);
   return val;
 }
-const dayTtl = (date, today) => (date < addDays(today, -1) ? 3 * 86400 : date <= today ? 900 : 6 * 3600);
+export const dayTtl = (date, today) => (date < addDays(today, -1) ? 3 * 86400 : date <= today ? 900 : 6 * 3600);
 
 export function parseEconRows(d) {
   const rows = (d && d.data && (d.data.rows || d.data)) || [];
@@ -429,6 +429,11 @@ export function parseEarnRows(d) {
       expected: clean(r.epsForecast),
       actual: clean(r.eps),
       quarter: clean(r.fiscalQuarterEnding),
+      // Extra fields used by the earnings calendar day view.
+      ests: numOf(r.noOfEsts),
+      lastYearEps: clean(r.lastYearEPS),
+      lastYearDate: mmddyyyy(r.lastYearRptDt),
+      surprise: clean(r.surprise),
     }))
     .filter((r) => r.ticker);
 }
