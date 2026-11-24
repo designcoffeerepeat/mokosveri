@@ -177,6 +177,13 @@ export async function renderEvents(app, api) {
     return;
   }
   const st = { view: 'upcoming', min: 2, cat: 'all', mine: false, ...loadPrefs() };
+  // The earnings calendar keeps its own state, so it lives in one element that
+  // is moved back into place after each repaint of the page.
+  let cal = null;
+  try {
+    const { createCalendar } = await import('/earncal.js');
+    cal = createCalendar(api, d.watch || watch);
+  } catch {}
   if (!d.watch.length) st.mine = false;
   const counts = { up: d.events.filter((e) => e.date >= d.today).length, rec: d.events.filter((e) => e.date < d.today).length };
   const seg = (name, opts, cur) => `<div class="ev-seg" role="group" data-k="${name}">${opts.map(([v, l]) => `<button type="button" data-v="${esc(v)}" aria-pressed="${String(v) === String(cur)}">${esc(l)}</button>`).join('')}</div>`;
@@ -188,6 +195,8 @@ export async function renderEvents(app, api) {
       ${d.partial ? '<div class="notice">Some feeds are still loading in the background. Refresh in a minute for the rest.</div>' : ''}
       <h2 class="section">Next high impact events</h2>
       ${nextHtml(d)}
+      ${cal ? '<h2 class="section" id="earnings-calendar">Earnings calendar</h2><div id="ecalSlot"></div>' : ''}
+      <h2 class="section">All events</h2>
       <div class="ev-bar">
         ${seg('view', [['upcoming', `Upcoming (${counts.up})`], ['recent', `Recent (${counts.rec})`]], st.view)}
         ${seg('min', [[1, 'All'], [2, 'Medium and high'], [3, 'High only']], st.min)}
@@ -196,6 +205,8 @@ export async function renderEvents(app, api) {
       </div>
       <div id="evList">${listHtml(d, st)}</div>
       ${footHtml(d)}`;
+    const slot = app.querySelector('#ecalSlot');
+    if (slot && cal) slot.replaceWith(cal);
     app.querySelectorAll('.ev-seg').forEach((g) =>
       g.addEventListener('click', (ev) => {
         const b = ev.target.closest('button');

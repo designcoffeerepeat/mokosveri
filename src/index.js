@@ -13,6 +13,7 @@ import { handleAuth } from './auth.js';
 import { handleWatchlist, handlePins, rememberScore } from './watchlist.js';
 import { buildSentiment } from './market.js';
 import { buildEvents } from './events.js';
+import { earningsMonth, earningsDay, parseWatch } from './earningscal.js';
 import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
 import { dividendsPage } from './dividends.js';
@@ -275,6 +276,16 @@ async function handleApi(request, env, ctx, url) {
     const watch = (url.searchParams.get('watch') || '').split(',').map((x) => cleanTicker(x)).filter(Boolean).slice(0, 25);
     const r = await settle(buildEvents(env, { watch }));
     return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
+  // Earnings calendar: month grid (?month=YYYY-MM) and one day in detail (?date=YYYY-MM-DD).
+  if (path === '/api/earnings/month') {
+    const r = await settle(earningsMonth(env, { month: url.searchParams.get('month'), watch: parseWatch(url.searchParams.get('watch')) }));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+  if (path === '/api/earnings/day') {
+    const r = await settle(earningsDay(env, { date: url.searchParams.get('date'), watch: parseWatch(url.searchParams.get('watch')) }));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 400);
   }
 
   // Dividend aristocrats: live yields and returns plus r/dividends chatter.
