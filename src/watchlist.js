@@ -8,6 +8,8 @@ import { fetchChart } from './sources/yahoo.js';
 import { computeTechnicals } from './analysis/technicals.js';
 import { scoreTechnical, composite } from './analysis/score.js';
 import { liveQuotes, refreshSeconds, marketLabel } from './sources/live.js';
+import { quoteStats } from './sources/quotestats.js';
+import { cleanColumns, columnNeeds } from '../public/wlcols.js';
 
 export const MAX_WATCH = 40;
 const MAX_FETCH_PER_REQUEST = 18; // price fetches per call; the rest load on a retry
@@ -60,7 +62,7 @@ async function stampAddedPrices(env, listId, tickers) {
 // The user's lists, creating "My watchlist" the first time.
 async function userLists(env, userId) {
   const q = () =>
-    env.DB.prepare('SELECT l.id, l.name, l.position, (SELECT COUNT(*) FROM watchlist_items i WHERE i.list_id = l.id) AS count FROM watchlists l WHERE l.user_id = ? ORDER BY l.position, l.id')
+    env.DB.prepare('SELECT l.id, l.name, l.position, l.columns, (SELECT COUNT(*) FROM watchlist_items i WHERE i.list_id = l.id) AS count FROM watchlists l WHERE l.user_id = ? ORDER BY l.position, l.id')
       .bind(userId)
       .all();
   let r = await q();
@@ -68,7 +70,7 @@ async function userLists(env, userId) {
     await env.DB.prepare('INSERT INTO watchlists (user_id, name, position, created_at) VALUES (?, ?, 0, ?)').bind(userId, 'My watchlist', Date.now()).run();
     r = await q();
   }
-  return r.results;
+  return r.results.map((l) => ({ ...l, columns: cleanColumns(l.columns) }));
 }
 
 // Resolves ?list= (or body.list) to one of the user's lists, defaulting to the first.
@@ -109,11 +111,61 @@ function overlayLive(rows, live) {
   return rows;
 }
 
+// Yahoo's 52 week range wins over the one from daily bars when we have it.
+export function mergeStats(r, s) {
+  if (!s) return r;
+  for (const [k, v] of Object.entries(s)) if (v != null && (r[k] == null || k === 'hi52' || k === 'lo52')) r[k] = v;
+  return r;
+}
+
 async function liveMeta(live) {
   return { refreshSec: refreshSeconds(live), market: marketLabel(live), at: Date.now() };
 }
 
-async function buildRows(env, items, listId = null) {
+// Change since the last close of the previous calendar year, in percent.
+export function ytdReturn(bars, now = Date.now()) {
+  if (!bars || bars.length < 2) return null;
+  const startOfYear = Date.UTC(new Date(now).getUTCFullYear(), 0, 1) / 1000;
+  let base = null;
+  for (const b of bars) {
+    if (b.t >= startOfYear) break;
+    base = b.c;
+  }
+  const last = bars[bars.length - 1].c;
+  return base && last != null ? (last / base - 1) * 100 : null;
+}
+
+// Beta against a benchmark from daily closes matched by trading day: the
+// covariance of daily returns over the variance of the benchmark's.
+export function betaFrom(bars, bench, maxDays = 252) {
+  if (!bars || !bench || bars.length < 40 || bench.length < 40) return null;
+  const day = (t) => Math.floor(t / 86400);
+  const bm = new Map(bench.map((b) => [day(b.t), b.c]));
+  const pairs = [];
+  for (const b of bars) if (bm.has(day(b.t))) pairs.push([b.c, bm.get(day(b.t))]);
+  const p = pairs.slice(-(maxDays + 1));
+  const x = [];
+  const y = [];
+  for (let i = 1; i < p.length; i++) {
+    if (!p[i - 1][0] || !p[i - 1][1]) continue;
+    x.push(p[i][0] / p[i - 1][0] - 1);
+    y.push(p[i][1] / p[i - 1][1] - 1);
+  }
+  if (x.length < 30) return null;
+  const mx = x.reduce((a, b) => a + b, 0) / x.length;
+  const my = y.reduce((a, b) => a + b, 0) / y.length;
+  let cov = 0;
+  let vy = 0;
+  for (let i = 0; i < x.length; i++) {
+    cov += (x[i] - mx) * (y[i] - my);
+    vy += (y[i] - my) ** 2;
+  }
+  return vy ? cov / vy : null;
+}
+
+const pctVs = (a, b) => (a != null && b ? (a / b - 1) * 100 : null);
+
+async function buildRows(env, items, listId = null, opts = {}) {
   const tickers = items.map((i) => i.ticker);
   const keys = [...tickers.flatMap((t) => [`chart:${t}:1y`, `score:${t}`]), 'chart:SPY:1y'];
   const [hit, buzz] = await Promise.all([cacheGetMany(env, keys), env.CACHE ? env.CACHE.get(BUZZ_KEY, 'json').catch(() => null) : null]);
@@ -122,7 +174,7 @@ async function buildRows(env, items, listId = null) {
   // Fetch missing price histories (capped per request), then store them in one batch.
   const missing = tickers.filter((t) => !hit.has(`chart:${t}:1y`));
   const toFetch = missing.slice(0, MAX_FETCH_PER_REQUEST);
-  const needSpy = !hit.has('chart:SPY:1y') && tickers.some((t) => !hit.has(`score:${t}`) && !buzzMap.has(t));
+  const needSpy = !hit.has('chart:SPY:1y') && (opts.beta || tickers.some((t) => !hit.has(`score:${t}`) && !buzzMap.has(t)));
   if (needSpy) toFetch.push('SPY');
   const fetched = await Promise.all(toFetch.map((t) => settle(fetchChart(t, '1y'))));
   const writes = [];
@@ -164,6 +216,15 @@ async function buildRows(env, items, listId = null) {
     row.change1d = tech ? tech.change1d : null;
     row.ret1m = tech ? tech.ret1m : null;
     row.ret1y = tech ? tech.ret1y : null;
+    row.ret5d = tech ? tech.ret5d : null;
+    row.ret3m = tech ? tech.ret3m : null;
+    row.ytd = ytdReturn(px.bars);
+    row.rsi = tech ? tech.rsi14 : null;
+    row.vs50 = tech ? pctVs(tech.price, tech.sma50) : null;
+    row.vs200 = tech ? pctVs(tech.price, tech.sma200) : null;
+    row.hi52 = tech ? tech.hi52 : null;
+    row.lo52 = tech ? tech.lo52 : null;
+    if (opts.beta && spy) row.beta = betaFrom(px.bars, spy.bars);
     row.currency = px.meta.currency || null;
     row.spark = px.bars.slice(-30).map((b) => +b.c.toFixed(2));
     if (sc) Object.assign(row, { score: sc.score, verdict: sc.verdict, scoreSource: 'full', scoredAt: sc.at });
@@ -252,7 +313,14 @@ export async function handleWatchlist(request, env, path) {
     const { lists, list } = await pickList(env, u.id, qs.get('list'));
     if (!list) return notFound();
     const items = await listTickers(env, list.id);
-    const [rows, live] = await Promise.all([buildRows(env, items, list.id), liveQuotes(env, items.map((i) => i.ticker)).catch(() => new Map())]);
+    const tickers = items.map((i) => i.ticker);
+    const cols = list.columns;
+    const [rows, live, stats] = await Promise.all([
+      buildRows(env, items, list.id, { beta: columnNeeds(cols, 'spy') }),
+      liveQuotes(env, tickers).catch(() => new Map()),
+      columnNeeds(cols, 'stats') ? quoteStats(env, tickers).catch(() => new Map()) : new Map(),
+    ]);
+    for (const r of rows) mergeStats(r, stats.get(r.ticker));
     return json({ list, lists, items: overlayLive(rows, live), max: MAX_WATCH, ...(await liveMeta(live)) });
   }
 
@@ -307,6 +375,16 @@ export async function handleWatchlist(request, env, path) {
     const r = await env.DB.prepare('UPDATE watchlists SET name = ? WHERE id = ? AND user_id = ?').bind(name, parseInt(lm[1], 10), u.id).run();
     if (!r.meta.changes) return notFound();
     return json({ ok: true, name });
+  }
+  const cm = path.match(/^\/api\/watchlists\/(\d+)\/columns$/);
+  if (cm && method === 'PUT') {
+    const body = await readJson(request);
+    if (!body || !(Array.isArray(body.columns) || body.columns === null)) return json({ error: 'Bad request.' }, 400);
+    // null puts the list back on the default columns.
+    const cols = body.columns === null ? null : cleanColumns(body.columns);
+    const r = await env.DB.prepare('UPDATE watchlists SET columns = ? WHERE id = ? AND user_id = ?').bind(cols ? JSON.stringify(cols) : null, parseInt(cm[1], 10), u.id).run();
+    if (!r.meta.changes) return notFound();
+    return json({ ok: true, columns: cleanColumns(cols) });
   }
   if (lm && method === 'DELETE') {
     const id = parseInt(lm[1], 10);
