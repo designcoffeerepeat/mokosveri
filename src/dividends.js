@@ -95,6 +95,26 @@ export const YIELD_FALLBACK = {
   SPGI: 0.86, SHW: 0.95, SWK: 3.39, SYY: 2.7, TROW: 4.99, TGT: 3.04, GWW: 0.74, WMT: 0.83, WST: 0.27,
 };
 
+// Dividend ETFs shown beside the aristocrats. Expense ratios are the funds'
+// published figures (percent a year); check them on the issuer's page.
+export const ETFS = [
+  ['SCHD', 'Schwab US Dividend Equity', 'Dividend growth', 0.06],
+  ['VIG', 'Vanguard Dividend Appreciation', 'Dividend growth', 0.05],
+  ['DGRO', 'iShares Core Dividend Growth', 'Dividend growth', 0.08],
+  ['NOBL', 'ProShares S&P 500 Dividend Aristocrats', 'Aristocrats', 0.35],
+  ['SDY', 'SPDR S&P Dividend', 'Aristocrats', 0.35],
+  ['REGL', 'ProShares S&P MidCap 400 Dividend Aristocrats', 'Aristocrats', 0.4],
+  ['VYM', 'Vanguard High Dividend Yield', 'High yield', 0.06],
+  ['HDV', 'iShares Core High Dividend', 'High yield', 0.08],
+  ['DVY', 'iShares Select Dividend', 'High yield', 0.38],
+  ['SPYD', 'SPDR Portfolio S&P 500 High Dividend', 'High yield', 0.07],
+  ['FDVV', 'Fidelity High Dividend', 'High yield', 0.15],
+  ['SCHY', 'Schwab International Dividend Equity', 'International', 0.08],
+  ['JEPI', 'JPMorgan Equity Premium Income', 'Covered call income', 0.35],
+  ['JEPQ', 'JPMorgan Nasdaq Equity Premium Income', 'Covered call income', 0.35],
+  ['DIVO', 'Amplify CWP Enhanced Dividend Income', 'Covered call income', 0.56],
+].map(([t, name, sector, er]) => ({ t, name, sector, er, etf: true, years: null }));
+
 // Third party research notes shown on the page, with their dates.
 export const RESEARCH = {
   morningstar: {
@@ -334,23 +354,37 @@ export function priceReturns(pts, price, now = Date.now()) {
   };
 }
 
-const r2 = (x) => (x == null || !isFinite(x) ? null : Math.round(x * 100) / 100);
+const r2 = (x) => (typeof x !== 'number' || !isFinite(x) ? null : Math.round(x * 100) / 100);
+// Yahoo sometimes sends {} or strings where numbers belong.
+const n = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const pos = (v) => (n(v) != null && v > 0 ? v : null);
+const day = (v) => {
+  const d = typeof v === 'number' ? new Date(v * 1000) : typeof v === 'string' ? new Date(v) : null;
+  return d && !isNaN(d) ? d.toISOString().slice(0, 10) : null;
+};
 
 // One table row from the static entry, a Yahoo quote and price history.
-export function rowFor(a, q, pts, now = Date.now()) {
+// `dist` is the fund's cash distributions ({t: epoch seconds, amount}); for
+// ETFs the trailing 12 months of those is the yield people quote.
+export function rowFor(a, q, pts, now = Date.now(), dist = null) {
   q = q || {};
-  const price = q.regularMarketPrice ?? (pts && pts.length ? pts[pts.length - 1].c : null);
+  const price = pos(q.regularMarketPrice) ?? (pts && pts.length ? pts[pts.length - 1].c : null);
+  const cut = now / 1000 - 365 * 86400;
+  const ttm = (dist || []).filter((d) => d && n(d.t) != null && d.t >= cut && pos(d.amount)).reduce((s, d) => s + d.amount, 0) || null;
   let yld = null;
   let yieldSrc = 'live';
-  if (q.dividendRate && price) yld = (q.dividendRate / price) * 100;
-  else if (q.dividendYield != null) yld = q.dividendYield;
-  else if (q.trailingAnnualDividendYield != null) yld = q.trailingAnnualDividendYield * 100;
+  const trailingQ = pos(q.trailingAnnualDividendYield) != null ? q.trailingAnnualDividendYield * 100 : null;
+  if (a.etf && ttm && price) yld = (ttm / price) * 100;
+  else if (pos(q.dividendRate) && price) yld = (q.dividendRate / price) * 100;
+  else if (pos(q.dividendYield) != null) yld = q.dividendYield;
+  else if (trailingQ != null) yld = trailingQ;
+  else if (ttm && price) yld = (ttm / price) * 100;
   if (yld == null && YIELD_FALLBACK[a.t] != null) {
     yld = YIELD_FALLBACK[a.t];
     yieldSrc = 'Oct 23';
   }
   const rt = priceReturns(pts, price, now);
-  const trailing = q.trailingAnnualDividendYield != null ? q.trailingAnnualDividendYield * 100 : null;
+  const trailing = ttm && price ? (ttm / price) * 100 : trailingQ;
   // Approximate total returns: price return plus the trailing yield per year.
   const inc = trailing ?? yld ?? 0;
   const row = {
@@ -358,14 +392,16 @@ export function rowFor(a, q, pts, now = Date.now()) {
     name: a.name,
     sector: a.sector,
     years: a.years,
+    etf: !!a.etf,
+    er: a.er ?? null,
     price: r2(price),
     change1d: r2(q.regularMarketChangePercent),
     yield: r2(yld),
     yieldSrc,
-    rate: r2(q.dividendRate ?? q.trailingAnnualDividendRate),
+    rate: r2(pos(q.dividendRate) ?? pos(q.trailingAnnualDividendRate) ?? ttm),
     pe: r2(q.trailingPE),
-    cap: q.marketCap ?? null,
-    exDiv: q.exDividendDate ? new Date(q.exDividendDate * 1000).toISOString().slice(0, 10) : null,
+    cap: n(q.marketCap),
+    exDiv: day(q.exDividendDate) || (dist && dist.length ? day(dist[dist.length - 1].t) : null),
     ytd: r2(rt.ytd),
     r1y: r2(rt.r1y),
     r3y: r2(rt.r3y),
@@ -381,21 +417,36 @@ export function rowFor(a, q, pts, now = Date.now()) {
 // Plain warnings the page shows next to a row.
 export function flagsFor(r) {
   const f = [];
+  if (r.sector === 'Covered call income') f.push({ k: 'cc', text: 'Covered call fund: payouts include option premium, so upside is capped and the payout does not grow like a dividend.' });
   if (r.yield != null && r.yield >= 5 && r.r1y != null && r.r1y <= -15) f.push({ k: 'trap', text: 'Yield is high mostly because the price fell. Check that earnings still cover the dividend.' });
   else if (r.yield != null && r.yield >= 4.5) f.push({ k: 'high', text: 'Well above the group average. Often a sign the market doubts future growth.' });
   if (r.years != null && r.years >= 50) f.push({ k: 'king', text: 'Dividend King: 50 or more years of raises.' });
   return f;
 }
 
+// ETF history comes from the chart endpoint, one call each, because it also
+// returns the fund's distributions (Yahoo's quote yield is often missing or
+// zero for ETFs).
+async function etfHistories(env) {
+  const out = new Map();
+  await pool(ETFS, 6, async (e) => {
+    const r = await settle(fetchChart(e.t, '5y', '1wk'));
+    if (r.ok) out.set(e.t, { pts: r.value.bars.map((b) => ({ t: b.t * 1000, c: b.c })), dist: r.value.dividends });
+  });
+  return out;
+}
+
 export async function buildDividends(env) {
-  return cached(env, 'div:aristocrats:v1', 3 * 3600, async () => {
+  return cached(env, 'div:aristocrats:v2', 3 * 3600, async () => {
     const tickers = ARISTOCRATS.map((a) => a.t);
-    const [q, h] = await Promise.all([settle(quotes(env, tickers)), settle(histories(env, tickers))]);
+    const [q, h, eh] = await Promise.all([settle(quotes(env, [...tickers, ...ETFS.map((e) => e.t)])), settle(histories(env, tickers)), settle(etfHistories(env))]);
     const qm = q.ok ? q.value : new Map();
     const hm = h.ok ? h.value : new Map();
+    const em = eh.ok ? eh.value : new Map();
     if (!qm.size && !hm.size) throw new Error(q.error || h.error || 'No market data');
     const now = Date.now();
     const rows = ARISTOCRATS.map((a) => rowFor(a, qm.get(a.t), hm.get(a.t), now));
+    const etfs = ETFS.map((e) => rowFor(e, qm.get(e.t), em.get(e.t) && em.get(e.t).pts, now, em.get(e.t) && em.get(e.t).dist));
     const ylds = rows.map((r) => r.yield).filter((x) => x != null);
     return {
       asOf: new Date(now).toISOString(),
@@ -405,6 +456,7 @@ export async function buildDividends(env) {
       quotesOk: q.ok,
       historyCount: hm.size,
       rows,
+      etfs,
     };
   });
 }

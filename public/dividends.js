@@ -47,7 +47,7 @@ function spark(values) {
 
 const flagChips = (r) =>
   (r.flags || [])
-    .map((f) => `<span class="chip dv-f-${esc(f.k)}" title="${esc(f.text)}">${f.k === 'trap' ? 'Check the payout' : f.k === 'high' ? 'Very high yield' : 'Dividend King'}</span>`)
+    .map((f) => `<span class="chip dv-f-${esc(f.k)}" title="${esc(f.text)}">${({ trap: 'Check the payout', high: 'Very high yield', king: 'Dividend King', cc: 'Covered calls' })[f.k] || f.k}</span>`)
     .join('');
 
 export function leaderCards(rows, sortKey) {
@@ -102,6 +102,39 @@ export function tableHtml(rows, st) {
         <td class="num mono ${tone(r.tr1y)}">${pct(r.tr1y)}</td>
         <td class="num mono ${tone(r.tr5y)}">${pct(r.tr5y)}</td>
         <td class="num mono small">${r.exDiv ? esc(shortDate(r.exDiv)) : ''}</td>
+      </tr>`
+      )
+      .join('')}
+  </tbody></table></div>`;
+}
+
+const ETF_COLS = [
+  ['t', 'Fund', ''],
+  ['er', 'Fee', 'num'],
+  ['yield', 'Yield', 'num'],
+  ['ytd', 'YTD', 'num'],
+  ['r1y', '1y price', 'num'],
+  ['tr1y', '1y total', 'num'],
+  ['tr5y', '5y total/yr', 'num'],
+];
+
+// Dividend ETFs: same minimum yield and ranking as the stocks, every strategy.
+export function etfTableHtml(etfs, st) {
+  const sortKey = st.sort === 'years' ? 'yield' : st.sort;
+  const rows = pickRows(etfs || [], { min: st.min, sort: sortKey, asc: st.asc, sector: 'all' });
+  if (!rows.length) return '<div class="card dv-empty">No dividend ETFs match this minimum yield right now.</div>';
+  const th = ETF_COLS.map(([k, l, c]) => `<th class="${c}">${k === sortKey ? `<b>${esc(l)}</b>` : esc(l)}</th>`).join('');
+  return `<div class="card tbl-wrap"><table class="dv-tbl dv-etf"><thead><tr>${th}</tr></thead><tbody>
+    ${rows
+      .map(
+        (r) => `<tr>
+        <td><a href="#/t/${encodeURIComponent(r.t)}" class="mono"><b>${esc(r.t)}</b></a> <span class="dv-nm">${esc(r.name)}</span><div class="small muted">${esc(r.sector)} ${flagChips(r)}</div></td>
+        <td class="num mono small">${r.er != null ? r.er.toFixed(2) + '%' : ''}</td>
+        <td class="num mono"><b>${pct(r.yield, 2, false)}</b></td>
+        <td class="num mono ${tone(r.ytd)}">${pct(r.ytd)}</td>
+        <td class="num mono ${tone(r.r1y)}">${pct(r.r1y)}</td>
+        <td class="num mono ${tone(r.tr1y)}">${pct(r.tr1y)}</td>
+        <td class="num mono ${tone(r.tr5y)}">${pct(r.tr5y)}</td>
       </tr>`
       )
       .join('')}
@@ -165,7 +198,7 @@ function savePrefs(st) {
 }
 
 export async function renderDividends(app, api) {
-  const hero = `<section class="hero"><h1>Dividend aristocrats</h1><p>S&amp;P 500 companies that have raised their dividend every year for at least 25 years. Filtered to yields above 2% and ranked by how they have actually performed, with what r/dividends is saying about them.</p>`;
+  const hero = `<section class="hero"><h1>Dividend aristocrats</h1><p>S&amp;P 500 companies that have raised their dividend every year for at least 25 years. Filtered to yields above 2% and ranked by how they have actually performed, alongside the popular dividend ETFs and what r/dividends is saying about them.</p>`;
   app.innerHTML = `${hero}</section><div class="loading"><div class="spinner"></div>Loading yields, returns and Reddit chatter…</div>`;
   let d;
   try {
@@ -174,7 +207,7 @@ export async function renderDividends(app, api) {
     app.innerHTML = `<div class="err"><h2>Could not load dividend aristocrats</h2><p class="muted">${esc(e.message)}</p></div>`;
     return;
   }
-  const byT = Object.fromEntries(d.rows.map((r) => [r.t, r]));
+  const byT = Object.fromEntries([...(d.etfs || []), ...d.rows].map((r) => [r.t, r]));
   const sectors = [...new Set(d.rows.map((r) => r.sector))].sort();
   const st = { min: 2, sort: 'tr1y', asc: false, sector: 'all', ...loadPrefs() };
   if (!SORTS[st.sort] && st.sort !== 'r1y') st.sort = 'tr1y';
@@ -196,6 +229,10 @@ export async function renderDividends(app, api) {
       <h2 class="section">All ${rows.length} matching aristocrats</h2>
       ${tableHtml(rows, st)}
       <p class="small muted">Total returns are approximate: price return plus the trailing 12 month dividend yield (per year for 5 years). Reinvested dividends would add a little more. Tap a column to sort.</p>
+
+      <h2 class="section">Dividend ETFs ${st.min ? `yielding ${st.min}% or more` : ''}</h2>
+      ${etfTableHtml(d.etfs, st)}
+      <p class="small muted">Same yield filter and ranking as the stocks above. Yield is the last 12 months of distributions divided by today's price. Fee is the fund's yearly expense ratio, already taken out of its returns. Covered call funds pay more now by selling away part of the upside, so their payouts can shrink and rarely grow.</p>
 
       <h2 class="section">What r/dividends is saying</h2>
       ${redditHtml(d, byT)}
