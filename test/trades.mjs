@@ -106,7 +106,7 @@ assert.equal(np.n, 40);
 assert.equal(np.buys + np.sells, 40);
 assert.deepEqual(np.tickers, ['NVDA', 'AAPL'], 'most traded ticker first');
 assert.equal(np.amountMin, 40040);
-assert.ok(np.trades[0].filedDate >= np.trades[39].filedDate, 'member trades newest first');
+assert.ok(np.items[0].filedDate >= np.items[39].filedDate, 'member trades newest first');
 
 const home = homeCongressHtml(many, 1);
 assert.equal(home.count, 2);
@@ -125,7 +125,10 @@ const d = { companies: groups, purchases: merged, congress: many };
 assert.equal(viewGroups('purchases', d, { ...base, min: 1e6, sort: 'value' }).length, 1);
 assert.equal(viewGroups('congress', d, { ...base, q: 'xom', sort: 'latest' })[0].n, 1, 'search narrows a member to matching trades');
 const comp = viewGroups('insiders', d, { ...base, sort: 'buyers' });
-assert.equal(comp.find((g) => g.ticker === 'ABC').trades.length, 2, 'company rows carry their purchases');
+assert.equal(comp.find((g) => g.ticker === 'ABC').items.length, 2, 'company rows carry their purchases');
+assert.equal(comp.find((g) => g.ticker === 'ABC').trades, 2, 'company buy count stays a number');
+assert.ok(!tableHtml('insiders', comp, { sort: 'buyers' }).includes('[object'), 'no object text in cells');
+assert.equal(mergePurchases([{ ...sec[0], ticker: 'N/A' }], []).length, 0, 'placeholder tickers dropped');
 assert.equal(sortRows('congress', cg, 'n', false)[0].member, 'Nancy Pelosi');
 assert.equal(sortRows('insiders', groups, 'ticker', true)[0].ticker, 'ABC');
 for (const tab of Object.keys(COLS)) assert.ok(COLS[tab].some((c) => c[0] === DEFAULT_SORT[tab][0]), `${tab} default sort is a column`);
@@ -142,3 +145,18 @@ assert.equal(tabFromHash('#/trades'), 'insiders');
 assert.equal(tabFromHash('#/trades/bogus'), 'insiders');
 
 console.log('trades tests passed');
+
+// Few members in the window: older disclosures are kept and marked.
+{
+  const { shapeCongress, MIN_MEMBERS } = await import('../src/sources/congress.js');
+  const one = Array.from({ length: 50 }, (_, i) => ({ member: 'Solo Member', ticker: 'AAPL', type: 'buy', amount: `$${i}`, txDate: dAgo(20), filedDate: dAgo(2) }));
+  const old = Array.from({ length: 12 }, (_, i) => ({ member: `Old ${String.fromCharCode(65 + i)}`, ticker: 'MSFT', type: 'sell', amount: '$1', txDate: dAgo(200), filedDate: dAgo(150) }));
+  const few = shapeCongress([...one, ...old], 90);
+  assert.equal(few.length, 62, 'older trades kept when only one member is recent');
+  assert.equal(few.filter((r) => r.older).length, 12);
+  assert.equal(few[0].member, 'Solo Member', 'recent first');
+  const lots = Array.from({ length: MIN_MEMBERS }, (_, i) => ({ member: `M ${String.fromCharCode(65 + i)}`, ticker: 'NVDA', type: 'buy', amount: '$1', txDate: dAgo(5), filedDate: dAgo(3) }));
+  assert.equal(shapeCongress([...lots, ...old], 90).length, MIN_MEMBERS, 'window kept when enough members');
+  assert.equal(homeCongressHtml(few, 10).count, 13);
+}
+console.log('few members ok');

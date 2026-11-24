@@ -115,28 +115,50 @@ async function pages(fn, env, first, count) {
 
 const tradeKey = (r) => [r.member, r.ticker, r.type, r.txDate, r.amount].join('|').toLowerCase();
 
-// Every trade disclosed in the last `days` days, for the full trades page.
-// Pulls more than the one page the buzz board uses.
+export const MIN_MEMBERS = 10;
+const memberCount = (rows) => new Set(rows.map((r) => String(r.member || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim())).size;
+
+// Clean, de-duplicated and newest first. Rows disclosed before the window are
+// kept only when the window alone has fewer than MIN_MEMBERS people (one
+// member filing a big batch can fill every recent page); those are marked
+// older so the page can say so.
+export function shapeCongress(raw, days) {
+  const since = daysAgo(days);
+  const seen = new Set();
+  const rows = raw
+    .filter((r) => r.ticker && /^[A-Z.\-]{1,6}$/.test(r.ticker))
+    .filter((r) => {
+      const k = tradeKey(r);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => (b.filedDate || '').localeCompare(a.filedDate || '') || (b.txDate || '').localeCompare(a.txDate || ''));
+  const fresh = rows.filter((r) => (r.filedDate || r.txDate) >= since);
+  if (memberCount(fresh) >= MIN_MEMBERS) return fresh;
+  return rows.map((r) => ((r.filedDate || r.txDate) >= since ? r : { ...r, older: true }));
+}
+
+// Every trade disclosed in the last `days` days, for the trades page and the
+// home page. Pulls more than the one page the buzz board scores with, and keeps
+// paging (up to 10 pages) while fewer than MIN_MEMBERS people show up.
 export async function congressAll(env, days = 90) {
-  return cached(env, `congress:all:${days}`, 3600, async () => {
+  return cached(env, `congress:all:v2:${days}`, 3600, async () => {
     const tries = [];
-    if (env.QUIVER_API_KEY) tries.push(() => quiverRecent(env));
-    if (env.FMP_API_KEY) tries.push(() => pages(fmpRecent, env, 0, 3));
-    tries.push(() => pages(capitolTradesRecent, env, 1, 5));
+    if (env.QUIVER_API_KEY) tries.push(async () => quiverRecent(env));
+    if (env.FMP_API_KEY)
+      tries.push(async () => {
+        const first = await pages(fmpRecent, env, 0, 3);
+        return memberCount(first) >= MIN_MEMBERS ? first : [...first, ...(await pages(fmpRecent, env, 3, 3).catch(() => []))];
+      });
+    tries.push(async () => {
+      const first = await pages(capitolTradesRecent, env, 1, 5);
+      return memberCount(first) >= MIN_MEMBERS ? first : [...first, ...(await pages(capitolTradesRecent, env, 6, 5).catch(() => []))];
+    });
     let lastErr;
-    const since = daysAgo(days);
     for (const fn of tries) {
       try {
-        const seen = new Set();
-        const rows = (await fn())
-          .filter((r) => r.ticker && /^[A-Z.\-]{1,6}$/.test(r.ticker) && (r.filedDate || r.txDate) >= since)
-          .filter((r) => {
-            const k = tradeKey(r);
-            if (seen.has(k)) return false;
-            seen.add(k);
-            return true;
-          });
-        return rows.sort((a, b) => (b.filedDate || '').localeCompare(a.filedDate || '') || (b.txDate || '').localeCompare(a.txDate || ''));
+        return shapeCongress(await fn(), days);
       } catch (e) {
         lastErr = e;
       }
