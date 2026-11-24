@@ -61,6 +61,17 @@ function decodeXml(s) {
 
 const truthy = (v) => v === '1' || /^true$/i.test(v);
 
+// Insider buying rule (applies everywhere on the site): a trade counts as an
+// insider purchase only when it is Form 4 code P, an acquisition, at a real
+// price above $0.00, and not footnoted as compensation. Code A (grants,
+// awards, bonuses) and code M (option exercises, RSU/PSU conversions) never
+// count. 10b5-1 plan trades still count but are flagged.
+export const PLAN_RE = /10b5-?1/i;
+export const COMP_RE = /\b(compensation|bonus|in lieu of|stock awards?|equity awards?|awarded|granted|grants? of|restricted stock|RSUs?|PSUs?|performance (?:stock|shares?|units?)|vest(?:ed|ing)|employee stock purchase|ESPP|director(?:'s|s')? fees?|retainer|incentive (?:plan|award))\b/i;
+export function isRealPurchase(t) {
+  return !!t && t.code === 'P' && t.ad !== 'D' && Number(t.price) > 0 && Number(t.shares) > 0 && !t.comp;
+}
+
 export function parseForm4(xml) {
   const issuerBlock = (xml.match(/<issuer>([\s\S]*?)<\/issuer>/i) || [])[1] || '';
   const ticker = tagVal(issuerBlock, 'issuerTradingSymbol').toUpperCase();
@@ -84,14 +95,21 @@ export function parseForm4(xml) {
   if (owner.isDirector) titleParts.push('Director');
   if (owner.isTenPct) titleParts.push('10% Owner');
 
-  const aff = tagVal(xml, 'aff10b5One');
-  const footnotes = (xml.match(/<footnotes>([\s\S]*?)<\/footnotes>/i) || [])[1] || '';
-  const plan = truthy(aff) || /10b5-1/i.test(footnotes);
+  // Footnotes by id. A transaction's own footnotes (on its code, shares or
+  // price, not on holdings after it) tell us whether a code P line was really
+  // compensation and whether it ran under a 10b5-1 plan.
+  const aff = truthy(tagVal(xml, 'aff10b5One'));
+  const footBlock = (xml.match(/<footnotes>([\s\S]*?)<\/footnotes>/i) || [])[1] || '';
+  const notes = new Map([...footBlock.matchAll(/<footnote\s+id="([^"]+)"[^>]*>([\s\S]*?)<\/footnote>/gi)].map((m) => [m[1], decodeXml(m[2].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim()]));
+  const plan = aff || PLAN_RE.test(footBlock);
 
   const txs = [...xml.matchAll(/<nonDerivativeTransaction>([\s\S]*?)<\/nonDerivativeTransaction>/gi)].map((m) => {
     const b = m[1];
     const shares = num(tagVal(b, 'transactionShares'));
     const price = num(tagVal(b, 'transactionPricePerShare'));
+    const own = b.replace(/<postTransactionAmounts>[\s\S]*?<\/postTransactionAmounts>|<ownershipNature>[\s\S]*?<\/ownershipNature>/gi, '');
+    const ids = [...own.matchAll(/<footnoteId\s+id="([^"]+)"/gi)].map((x) => x[1]);
+    const text = ids.map((id) => notes.get(id) || '').join(' ');
     return {
       code: tagVal(b, 'transactionCode').toUpperCase(),
       ad: tagVal(b, 'transactionAcquiredDisposedCode').toUpperCase(),
@@ -100,6 +118,11 @@ export function parseForm4(xml) {
       price,
       value: shares && price ? shares * price : 0,
       ownedAfter: num(tagVal(b, 'sharesOwnedFollowingTransaction')),
+      // The box on the form, the trade's own footnote, or a 10b5-1 note in a
+      // filing whose trade lines carry no footnotes of their own.
+      plan10b5: aff || PLAN_RE.test(text) || (!ids.length && PLAN_RE.test(footBlock)),
+      comp: COMP_RE.test(text),
+      footnote: text.slice(0, 300),
     };
   });
 
@@ -146,7 +169,7 @@ export async function companyInsiders(env, ticker, days = 30) {
   const cutoff = daysAgo(days);
   const recent = subs.list.filter((f) => f.filed >= cutoff).slice(0, 24);
   const parsed = await pool(recent, 6, async (f) =>
-    cached(env, `f4:${f.acc}`, 86400 * 45, async () => {
+    cached(env, `f4v2:${f.acc}`, 86400 * 45, async () => {
       const url = `https://www.sec.gov/Archives/edgar/data/${cikNum}/${f.acc.replace(/-/g, '')}/${rawDocPath(f.doc)}`;
       const xml = await getText(url, { headers: secHeaders(env) });
       const p = parseForm4(xml);
@@ -158,7 +181,8 @@ export async function companyInsiders(env, ticker, days = 30) {
   for (const p of parsed) {
     if (!p || p.error || !p.transactions) continue;
     for (const t of p.transactions) {
-      if (!['P', 'S'].includes(t.code)) continue; // open-market buys and sells only
+      // Open-market sells, and buys that pass the insider buying rule.
+      if (t.code !== 'S' && !isRealPurchase(t)) continue;
       if (t.date && t.date < cutoff) continue;
       rows.push({
         owner: p.owner,
@@ -173,7 +197,7 @@ export async function companyInsiders(env, ticker, days = 30) {
         price: t.price,
         value: t.value,
         ownedAfter: t.ownedAfter,
-        plan10b5: p.plan10b5,
+        plan10b5: t.plan10b5 != null ? t.plan10b5 : p.plan10b5,
         url: p.url,
       });
     }
@@ -280,10 +304,10 @@ export async function ingestForm4(env) {
     stmts.push(mark.bind(c.acc, c.filed || today, p ? 'ok' : 'skip'));
     if (!p) continue;
     for (const t of p.transactions) {
-      if (!['P', 'S'].includes(t.code)) continue;
+      if (t.code !== 'S' && !isRealPurchase(t)) continue;
       txCount++;
       stmts.push(
-        ins.bind(c.acc, p.ticker || null, p.issuer, p.issuerCik, p.owner, p.ownerCik, p.title, p.isDirector ? 1 : 0, p.isOfficer ? 1 : 0, p.isTenPct ? 1 : 0, t.code, t.ad, t.date, c.filed || today, t.shares, t.price, t.value, t.ownedAfter, p.plan10b5 ? 1 : 0)
+        ins.bind(c.acc, p.ticker || null, p.issuer, p.issuerCik, p.owner, p.ownerCik, p.title, p.isDirector ? 1 : 0, p.isOfficer ? 1 : 0, p.isTenPct ? 1 : 0, t.code, t.ad, t.date, c.filed || today, t.shares, t.price, t.value, t.ownedAfter, t.plan10b5 ? 1 : 0)
       );
     }
   }
@@ -299,9 +323,10 @@ export async function recentInsiderBuys(env, days = 30, limit = 25) {
   const since = daysAgo(days);
   const q = `SELECT ticker, MAX(issuer) AS issuer, COUNT(DISTINCT owner_cik) AS buyers, SUM(value) AS total_value,
       SUM(shares) AS total_shares, MAX(tx_date) AS last_date,
+      SUM(plan_10b5) AS plan_buys,
       SUM(CASE WHEN title LIKE '%CEO%' OR title LIKE '%Chief Executive%' OR title LIKE '%CFO%' OR title LIKE '%Chief Financial%' OR title LIKE '%President%' OR title LIKE '%Chair%' THEN 1 ELSE 0 END) AS csuite,
       GROUP_CONCAT(DISTINCT owner) AS owners
-    FROM insider_tx WHERE code = 'P' AND tx_date >= ? AND ticker IS NOT NULL AND ticker != '' AND ticker != 'NONE' AND value > 0
+    FROM insider_tx WHERE code = 'P' AND tx_date >= ? AND ticker IS NOT NULL AND ticker != '' AND ticker != 'NONE' AND price > 0 AND value > 0
     GROUP BY ticker ORDER BY buyers DESC, total_value DESC LIMIT ?`;
   const r = await env.DB.prepare(q).bind(since, limit).all();
   return (r.results || []).map((x) => ({ ...x, source: 'SEC Form 4' }));
@@ -310,7 +335,7 @@ export async function recentInsiderBuys(env, days = 30, limit = 25) {
 export async function tickerInsiderFromDb(env, ticker, days = 30) {
   const r = await env.DB.prepare(
     `SELECT owner, title, is_officer, is_director, is_ten_pct, code, tx_date, filed_date, shares, price, value, owned_after, plan_10b5, accession
-     FROM insider_tx WHERE ticker = ? AND tx_date >= ? ORDER BY tx_date DESC LIMIT 100`
+     FROM insider_tx WHERE ticker = ? AND tx_date >= ? AND (code != 'P' OR price > 0) ORDER BY tx_date DESC LIMIT 100`
   )
     .bind(ticker, daysAgo(days))
     .all();

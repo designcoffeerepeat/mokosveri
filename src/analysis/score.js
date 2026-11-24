@@ -53,6 +53,8 @@ export function scoreInsider(ins) {
     );
     if (buyers.size >= 3) signals.push(sig('Cluster buy: 3 or more insiders buying in the same window, historically one of the strongest insider signals', 1));
     if (maxInc > 0.1) signals.push(sig(`At least one insider grew their stake by ${(maxInc * 100).toFixed(0)}%`, 1));
+    const planBuys = buys.filter((b) => b.plan10b5).length;
+    if (planBuys) signals.push(sig(`${planBuys} of these purchases ${planBuys === 1 ? 'was' : 'were'} made under a pre-scheduled 10b5-1 plan`, 0));
   }
 
   const planSells = sells.filter((t) => t.plan10b5);

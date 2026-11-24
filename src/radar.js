@@ -154,6 +154,7 @@ export function insiderPoints(ins, cap) {
   const who = cs ? (buyers > 1 ? ', including a top executive' : ' (a top executive)') : '';
   const why = [`${buyers} insider${buyers > 1 ? 's' : ''} bought ${fmtMoney(val)} on the open market${who}${pctCap != null && pctCap >= 0.05 ? `, about ${pctCap >= 1 ? pctCap.toFixed(1) : pctCap.toFixed(2)}% of the company` : ''}`];
   if (buyers >= 3) why.push('Cluster buy: 3 or more insiders in the same month');
+  if (ins.plan_buys) why.push(`${ins.plan_buys} of these purchases ${ins.plan_buys === 1 ? 'was' : 'were'} made under a 10b5-1 plan`);
   return { pts: Math.min(pts, 35), why, pctCap, cluster: buyers >= 3, csuite: !!cs };
 }
 

@@ -48,7 +48,9 @@ export async function openInsiderPurchases(days = 30) {
     `https://openinsider.com/screener?s=&o=&pl=&ph=&ll=&lh=&fd=${days}&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&vl=25&vh=&ocl=&och=&sic1=-1&sicl=100&sich=9999&grp=0&nfl=&nfh=&nil=&nih=&nol=&noh=&v2l=&v2h=&oc2l=&oc2h=&sortcol=0&cnt=500&page=1`;
   const html = await getText(url, { headers: { 'User-Agent': BROWSER_UA } }, 12000);
   const since = daysAgo(days);
-  return parseOpenInsiderTable(html).filter((r) => r.ticker && /P/.test(r.type) && (!r.date || r.date >= since));
+  // Insider buying rule: code P only (OpenInsider writes "P - Purchase"), at a
+  // real price. Grants (A), option exercises (M) and $0.00 lines are dropped.
+  return parseOpenInsiderTable(html).filter((r) => r.ticker && /^P\b/.test(r.type || '') && r.price > 0 && (!r.date || r.date >= since));
 }
 
 // Group raw purchase rows by ticker.
