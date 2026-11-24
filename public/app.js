@@ -179,11 +179,9 @@ async function renderHome() {
       (r, i) => `<tr class="click${extra(i)}" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.issuer || '')}</td><td class="num">${r.buyers}</td><td class="num">${fmtMoney(r.total_value)}</td><td>${r.csuite ? '<span class="tag buy">C-suite</span>' : ''}</td><td class="num">${shortDate(r.last_date)}</td></tr>`
     )
     .join('');
-  const congRows = (b.congress || [])
-    .map(
-      (r, i) => `<tr class="click${extra(i)}" data-t="${esc(r.ticker)}"><td class="mono">${esc(r.ticker)}</td><td>${esc(r.member)}<div class="muted" style="font-size:12px">${esc([r.chamber, r.party].filter(Boolean).join(' · '))}</div></td><td><span class="tag ${r.type === 'buy' ? 'buy' : 'sell'}">${esc(r.type)}</span></td><td class="num">${esc(r.amount || '')}</td><td class="num">${shortDate(r.txDate)}</td><td class="num">${shortDate(r.filedDate)}</td></tr>`
-    )
-    .join('');
+  // Congress trades, one row per member; a row expands to that member's trades.
+  const tmod = await import('/trades.js');
+  const cong = (b.congress || []).length ? tmod.homeCongressHtml(b.congress, SHOW) : null;
   const talked = (b.mostTalked || []).map(buzzRow).join('');
   app.innerHTML = `
     <section class="hero"><h1>What the market is buzzing about</h1>
@@ -201,8 +199,8 @@ async function renderHome() {
     <h2 class="section">Insider buying <small class="muted">open market purchases (Form 4, code P), last ${b.insiderDays} days</small></h2>
     <div class="card">${insRows ? `<div class="tbl-wrap xp-rows"><table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Insiders</th><th class="num">Total bought</th><th></th><th class="num">Latest</th></tr></thead><tbody>${insRows}</tbody></table></div>${foot(b.insiderBuys.length, '#/trades/insiders', 'All insider buys, searchable')}` : '<div class="empty">Insider data is still loading. The SEC feed is ingested every 10 minutes.</div>'}</div>
 
-    <h2 class="section">Congress trades <small class="muted">recent STOCK Act disclosures</small></h2>
-    <div class="card">${congRows ? `<div class="tbl-wrap xp-rows"><table><thead><tr><th>Ticker</th><th>Member</th><th>Type</th><th class="num">Amount</th><th class="num">Traded</th><th class="num">Disclosed</th></tr></thead><tbody>${congRows}</tbody></table></div>${foot(b.congress.length, '#/trades/congress', 'All Congress trades, searchable')}` : `<div class="empty">Congressional trade feed is unavailable right now${b.status && b.status.congress && b.status.congress !== 'ok' ? ` (${esc(b.status.congress)})` : ''}.</div>`}</div>
+    <h2 class="section">Congress trades <small class="muted">recent STOCK Act disclosures, by member. Tap a name for their trades</small></h2>
+    <div class="card">${cong ? `<div class="tbl-wrap xp-rows" id="homeCong">${cong.html}</div>${foot(cong.count, '#/trades/congress', 'All Congress trades, searchable')}` : `<div class="empty">Congressional trade feed is unavailable right now${b.status && b.status.congress && b.status.congress !== 'ok' ? ` (${esc(b.status.congress)})` : ''}.</div>`}</div>
 
     ${talked ? `<h2 class="section">Most talked about on Reddit</h2><div class="card"><div class="rows">${talked}</div></div>` : ''}
 
@@ -219,7 +217,9 @@ async function renderHome() {
       Separately, <b>move potential</b> estimates how likely a large move is in either direction, based on volatility, volume surges, short interest, social momentum and upcoming earnings. The buzz board uses a faster subset of signals; open a ticker for the full model.
     </div>`;
   placeLists();
-  app.querySelectorAll('tr.click').forEach((tr) => tr.addEventListener('click', () => go(tr.dataset.t)));
+  app.querySelectorAll('tr.click').forEach((tr) => !tr.closest('.gp-sub') && tr.addEventListener('click', () => go(tr.dataset.t)));
+  const hc = app.querySelector('#homeCong');
+  if (hc) tmod.bindGroups(hc);
   app.querySelectorAll('.xp-btn').forEach((btn) =>
     btn.addEventListener('click', () => {
       const box = btn.closest('.card').querySelector('.xp-rows');

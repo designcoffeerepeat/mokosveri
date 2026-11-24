@@ -20,10 +20,35 @@
 .tbl-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--line); }
 .tbl-foot a { font: 500 13px var(--sans); color: var(--ink); text-decoration: none; }
 .tbl-foot a:hover { text-decoration: underline; }
-.xp-rows tr.xp-extra { display: none; }
+.xp-rows tr.xp-extra, .xp-rows tbody.xp-extra { display: none; }
 .xp-rows.open tr.xp-extra { display: table-row; }
+.xp-rows.open tbody.xp-extra { display: table-row-group; }
 /* Home shows 10 rows before expanding; drop the 10th row's rule so it does not double the footer's. */
-.xp-rows:not(.open) tbody tr:nth-child(10) td { border-bottom: 0; }
+.xp-rows:not(.open) table:not(.gp-tbl) tbody tr:nth-child(10) td { border-bottom: 0; }
+
+/* Grouped tables: one tbody per company, insider or member, expandable */
+.gp-tbl { margin-bottom: -1px; }
+.gp-tbl tr.gp-row > td, .gp-tbl tr.gp-detail > td { border-bottom: 1px solid var(--line); }
+.gp-row { cursor: pointer; }
+.gp-row:hover > td, .gp-row.open > td { background: var(--surface-2); }
+.gp-row:focus-visible { outline: 2px solid var(--ink-2); outline-offset: -2px; }
+.gp-row a { color: inherit; text-decoration: none; }
+.gp-row a.mono:hover { text-decoration: underline; }
+.gp-caret { display: inline-block; width: 0; height: 0; margin-right: 8px; border-left: 5px solid var(--muted); border-top: 4px solid transparent; border-bottom: 4px solid transparent; transition: transform 0.15s; vertical-align: 1px; }
+.gp-row.open .gp-caret { transform: rotate(90deg); }
+.gp-name { font-weight: 600; }
+.gp-row > td:first-child { white-space: nowrap; }
+.gp-row .tr-sub { margin-left: 13px; }
+.gp-ticks { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.gp-ticks .chip { text-decoration: none; font-size: 11.5px; }
+.gp-ticks .chip:hover { border-color: var(--ink-2); color: var(--ink); }
+.gp-bs { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.gp-detail > td { padding: 0 0 8px 26px; background: var(--surface-2); }
+.gp-sub { font-size: 12.5px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; border-collapse: separate; border-spacing: 0; overflow: hidden; margin-right: 14px; width: calc(100% - 14px); }
+.gp-sub th { padding: 6px 10px; font-size: 11px; }
+.gp-sub td { padding: 6px 10px; }
+.gp-sub tbody tr:hover td { background: var(--surface-2); }
+.gp-sub a { color: inherit; }
 
 @media (max-width: 640px) {
   .tr-search { max-width: none; flex-basis: 100%; }

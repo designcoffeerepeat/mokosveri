@@ -136,7 +136,8 @@ export async function buildBuzz(env) {
     mostTalked,
     all,
     insiderBuys: insList.slice(0, 25),
-    congress: congList.sort((a, b) => (b.filedDate || '').localeCompare(a.filedDate || '')).slice(0, 30),
+    // Enough trades for the home page to group them by member.
+    congress: congList.sort((a, b) => (b.filedDate || '').localeCompare(a.filedDate || '')).slice(0, 300),
     status: {
       reddit: ape.ok ? 'ok' : ape.error,
       stocktwits: st.ok ? 'ok' : st.error,
