@@ -169,6 +169,8 @@ export async function analyzeTicker(env, ticker, opts = {}) {
     ? q.topHoldings.holdings.map((h) => ({ symbol: h.symbol, name: h.holdingName, pct: raw(h.holdingPercent) }))
     : null;
 
+  const dividend = isIdx ? null : dividendInfo(q, px.value.dividends, tech && tech.price);
+
   // Company profile (or fund profile for ETFs) shown at the bottom of the page.
   const sp = q.summaryProfile || {};
   const fp = q.fundProfile || {};
@@ -219,6 +221,7 @@ export async function analyzeTicker(env, ticker, opts = {}) {
     congress: congressTrades,
     news: newsSent ? newsSent.items : [],
     newsMeta: newsSent ? { method: newsSent.method, last48h: newsSent.last48h, sources: nw.value.sources } : null,
+    dividend,
     holdings,
     profile,
     sources,
@@ -226,4 +229,33 @@ export async function analyzeTicker(env, ticker, opts = {}) {
   };
   result.plain = await plainSummary(env, result, { waitUntil });
   return result;
+}
+
+// Dividend yield, the headline number for an ETF. Yahoo's quote summary gives
+// the fund's yield (summaryDetail.yield for ETFs, dividendYield for stocks);
+// the payouts in the last 12 months from the price history back it up and
+// give the trailing figure when the summary is missing.
+export function dividendInfo(q, divs, price) {
+  const sd = (q && q.summaryDetail) || {};
+  const ks = (q && q.defaultKeyStatistics) || {};
+  const pos = (v) => (v != null && isFinite(v) && v > 0 ? v : null);
+  const cutoff = Date.now() / 1000 - 365 * 86400;
+  const last12 = (divs || []).filter((d) => d.t >= cutoff);
+  const ttmRate = last12.length ? last12.reduce((s, d) => s + d.amount, 0) : null;
+  const ttmYield = ttmRate && price ? (ttmRate / price) * 100 : null;
+  const quoted = pos(raw(sd.yield)) ?? pos(raw(ks.yield)) ?? pos(raw(sd.dividendYield)) ?? pos(raw(sd.trailingAnnualDividendYield));
+  const yieldPct = quoted != null ? quoted * 100 : ttmYield;
+  const rate = pos(raw(sd.dividendRate)) ?? pos(raw(sd.trailingAnnualDividendRate)) ?? ttmRate;
+  const last = last12.length ? last12[last12.length - 1] : (divs && divs.length ? divs[divs.length - 1] : null);
+  const exRaw = raw(sd.exDividendDate);
+  if (yieldPct == null && rate == null && !last) return null;
+  return {
+    yieldPct: yieldPct != null ? +yieldPct.toFixed(2) : null,
+    ttmYieldPct: ttmYield != null ? +ttmYield.toFixed(2) : null,
+    annualRate: rate != null ? +rate.toFixed(4) : null,
+    payments12m: last12.length,
+    lastAmount: last ? last.amount : null,
+    lastDate: last ? new Date(last.t * 1000).toISOString().slice(0, 10) : null,
+    exDate: exRaw ? new Date(exRaw * 1000).toISOString().slice(0, 10) : null,
+  };
 }
