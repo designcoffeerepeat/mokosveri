@@ -13,9 +13,9 @@ export async function fetchChart(ticker, range = '1y', interval = '1d') {
   const sym = encodeURIComponent(yahooSymbol(ticker));
   let d;
   try {
-    d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${interval}&includePrePost=false`, { headers: H });
+    d = await getJSON(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${interval}&includePrePost=false&events=div`, { headers: H });
   } catch {
-    d = await getJSON(`https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${interval}&includePrePost=false`, { headers: H });
+    d = await getJSON(`https://query2.finance.yahoo.com/v8/finance/chart/${sym}?range=${range}&interval=${interval}&includePrePost=false&events=div`, { headers: H });
   }
   const r = d.chart && d.chart.result && d.chart.result[0];
   if (!r || !r.timestamp) throw new Error('No price data');
@@ -26,8 +26,15 @@ export async function fetchChart(ticker, range = '1y', interval = '1d') {
     bars.push({ t: r.timestamp[i], o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i], v: q.volume[i] || 0 });
   }
   const m = r.meta || {};
+  // Cash distributions in the range (ETFs and dividend stocks), oldest first.
+  const dv = (r.events && r.events.dividends) || {};
+  const dividends = Object.values(dv)
+    .filter((x) => x && x.date && x.amount > 0)
+    .map((x) => ({ t: x.date, amount: x.amount }))
+    .sort((a, b) => a.t - b.t);
   return {
     bars,
+    dividends,
     meta: {
       currency: m.currency,
       exchange: m.fullExchangeName || m.exchangeName,

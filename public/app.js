@@ -224,6 +224,27 @@ function compBlock(c) {
     <ul class="sigs">${c.signals.map((s) => `<li class="${s.impact > 0 ? 'p' : s.impact < 0 ? 'n' : ''}">${esc(s.text)}</li>`).join('')}</ul></div>`;
 }
 
+// ETFs lead their key numbers with the dividend yield, shown large across the
+// full width of the card with the payout facts beside it.
+function divHero(d) {
+  if (!d || d.yieldPct == null) {
+    return `<div class="stat stat-hero"><div class="hero-main"><div class="k">Dividend yield</div><div class="v">n/a</div><div class="h">${d && d.lastDate ? `Last paid ${fmtNum(d.lastAmount, 4)} on ${esc(shortDate(d.lastDate))}` : 'No distributions found in the last 12 months'}</div></div></div>`;
+  }
+  const n = d.payments12m || 0;
+  const freq = n >= 11 ? 'Monthly' : n >= 3 && n <= 5 ? 'Quarterly' : n === 2 ? 'Twice a year' : n === 1 ? 'Yearly' : n ? `${n} times a year` : null;
+  const facts = [
+    d.annualRate != null ? ['Annual payout', `${fmtNum(d.annualRate, 2)} per share`] : null,
+    freq ? ['Pays', freq] : null,
+    d.lastDate ? ['Last payment', `${fmtNum(d.lastAmount, 4)} on ${shortDate(d.lastDate)}`] : null,
+    d.exDate ? ['Ex-dividend', shortDate(d.exDate)] : null,
+    d.ttmYieldPct != null && Math.abs(d.ttmYieldPct - d.yieldPct) >= 0.05 ? ['Trailing 12m', fmtPct(d.ttmYieldPct, 2, false)] : null,
+  ].filter(Boolean);
+  return `<div class="stat stat-hero">
+    <div class="hero-main"><div class="k">Dividend yield</div><div class="v">${fmtPct(d.yieldPct, 2, false)}</div><div class="h">per year at today's price</div></div>
+    ${facts.length ? `<dl class="hero-facts">${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>` : ''}
+  </div>`;
+}
+
 function stat(k, v, h = '') {
   return `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div>${h ? `<div class="h">${h}</div>` : ''}</div>`;
 }
@@ -475,6 +496,7 @@ function fillAnalysis(a) {
 
     <h2 class="section">Key numbers</h2>
     <div class="card stats" style="overflow:hidden">
+      ${a.type === 'ETF' ? divHero(a.dividend) : ''}
       ${stat('RSI (14)', fmtNum(tc.rsi14, 0), tc.rsi14 > 70 ? 'overbought' : tc.rsi14 < 30 ? 'oversold' : 'neutral range')}
       ${stat('Volume vs 20d avg', tc.relVolume ? `${fmtNum(tc.relVolume, 2)}x` : 'n/a', tc.volume ? `${fmtShares(tc.volume)} today` : '')}
       ${stat('52 week range', `${fmtNum(tc.lo52)} to ${fmtNum(tc.hi52)}`, `${fmtPct(tc.fromHigh)} from high`)}
