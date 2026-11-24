@@ -26,6 +26,9 @@
 /* Home shows 10 rows before expanding; drop the 10th row's rule so it does not double the footer's. */
 .xp-rows:not(.open) table:not(.gp-tbl) tbody tr:nth-child(10) td { border-bottom: 0; }
 
+/* Note above a home table */
+.tbl-note { padding: 10px 14px 0; }
+
 /* Grouped tables: one tbody per company, insider or member, expandable */
 .gp-tbl { margin-bottom: -1px; }
 .gp-tbl tr.gp-row > td, .gp-tbl tr.gp-detail > td { border-bottom: 1px solid var(--line); }

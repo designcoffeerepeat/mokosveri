@@ -4,7 +4,7 @@ import { analyzeTicker } from './analyze.js';
 import { tickerSnapshot } from './snapshot.js';
 import { buildBuzz, mergedInsiderBuys } from './buzz.js';
 import { ingestForm4, refreshTickerTable, pruneOld } from './sources/sec.js';
-import { congressRecent } from './sources/congress.js';
+import { congressRecent, congressAll } from './sources/congress.js';
 import { searchSymbols } from './sources/yahoo.js';
 import { optionChain } from './sources/options.js';
 import { priceHistory, RANGES } from './sources/history.js';
@@ -144,6 +144,13 @@ async function handleApi(request, env, ctx, url) {
     if (!b) b = await runBuzz(env);
     else ctx.waitUntil(runDueJobs(env, ['buzz']));
     return json(b);
+  }
+
+  // Congress trades for the home page table, in their own request so the
+  // paging gets a fresh fetch budget. Cached for an hour inside congressAll.
+  if (path === '/api/congress') {
+    const r = await settle(congressAll(env, 90));
+    return r.ok ? json({ days: 90, trades: r.value }) : json({ error: r.error }, 502);
   }
 
   // Full insider buying and Congress trades lists. Kept for 30 minutes.

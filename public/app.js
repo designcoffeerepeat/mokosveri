@@ -181,7 +181,21 @@ async function renderHome() {
     .join('');
   // Congress trades, one row per member; a row expands to that member's trades.
   const tmod = await import('/trades.js');
-  const cong = (b.congress || []).length ? tmod.homeCongressHtml(b.congress, SHOW) : null;
+  const congInner = (rows) => {
+    const c = (rows || []).length ? tmod.homeCongressHtml(rows, SHOW) : null;
+    if (!c) return `<div class="empty">Congressional trade feed is unavailable right now${b.status && b.status.congress && b.status.congress !== 'ok' ? ` (${esc(b.status.congress)})` : ''}.</div>`;
+    const note = rows.some((r) => r.older) ? '<div class="tbl-note small muted">Few members disclosed trades in the last 90 days, so older disclosures are included to show more people.</div>' : '';
+    return `${note}<div class="tbl-wrap xp-rows">${c.html}</div>${foot(c.count, '#/trades/congress', 'All Congress trades, searchable')}`;
+  };
+  const bindXp = (card) =>
+    card.querySelectorAll('.xp-btn').forEach((btn) =>
+      btn.addEventListener('click', () => {
+        const box = btn.closest('.card').querySelector('.xp-rows');
+        const open = box.classList.toggle('open');
+        btn.setAttribute('aria-expanded', String(open));
+        btn.textContent = open ? btn.dataset.less : btn.dataset.more;
+      })
+    );
   const talked = (b.mostTalked || []).map(buzzRow).join('');
   app.innerHTML = `
     <section class="hero"><h1>What the market is buzzing about</h1>
@@ -200,7 +214,7 @@ async function renderHome() {
     <div class="card">${insRows ? `<div class="tbl-wrap xp-rows"><table><thead><tr><th>Ticker</th><th>Company</th><th class="num">Insiders</th><th class="num">Total bought</th><th></th><th class="num">Latest</th></tr></thead><tbody>${insRows}</tbody></table></div>${foot(b.insiderBuys.length, '#/trades/insiders', 'All insider buys, searchable')}` : '<div class="empty">Insider data is still loading. The SEC feed is ingested every 10 minutes.</div>'}</div>
 
     <h2 class="section">Congress trades <small class="muted">recent STOCK Act disclosures, by member. Tap a name for their trades</small></h2>
-    <div class="card">${cong ? `<div class="tbl-wrap xp-rows" id="homeCong">${cong.html}</div>${foot(cong.count, '#/trades/congress', 'All Congress trades, searchable')}` : `<div class="empty">Congressional trade feed is unavailable right now${b.status && b.status.congress && b.status.congress !== 'ok' ? ` (${esc(b.status.congress)})` : ''}.</div>`}</div>
+    <div class="card" id="homeCongCard">${congInner(b.congress)}</div>
 
     ${talked ? `<h2 class="section">Most talked about on Reddit</h2><div class="card"><div class="rows">${talked}</div></div>` : ''}
 
@@ -218,16 +232,20 @@ async function renderHome() {
     </div>`;
   placeLists();
   app.querySelectorAll('tr.click').forEach((tr) => !tr.closest('.gp-sub') && tr.addEventListener('click', () => go(tr.dataset.t)));
-  const hc = app.querySelector('#homeCong');
-  if (hc) tmod.bindGroups(hc);
-  app.querySelectorAll('.xp-btn').forEach((btn) =>
-    btn.addEventListener('click', () => {
-      const box = btn.closest('.card').querySelector('.xp-rows');
-      const open = box.classList.toggle('open');
-      btn.setAttribute('aria-expanded', String(open));
-      btn.textContent = open ? btn.dataset.less : btn.dataset.more;
+  bindXp(app);
+  const cc = app.querySelector('#homeCongCard');
+  tmod.bindGroups(cc);
+  // The buzz board scores from one page of Congress trades, which a single
+  // member's big batch can fill. Swap in the longer list when it has more people.
+  api('/api/congress')
+    .then((r) => {
+      const rows = r && r.trades;
+      if (!rows || !rows.length || !cc.isConnected) return;
+      if (tmod.groupCongress(rows).length <= tmod.groupCongress(b.congress).length) return;
+      cc.innerHTML = congInner(rows);
+      bindXp(cc);
     })
-  );
+    .catch(() => {});
 }
 
 // ---------- ticker page ----------

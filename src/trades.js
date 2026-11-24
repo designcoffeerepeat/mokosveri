@@ -51,7 +51,8 @@ export function mergePurchases(sec, oi) {
     if (!byT.has(r.ticker)) byT.set(r.ticker, []);
     byT.get(r.ticker).push(r);
   }
-  const out = [...sec];
+  // Drop placeholder tickers some filers use (N/A, NONE) for unlisted funds.
+  const out = sec.filter((r) => cleanTicker(r.ticker));
   for (const r of oi) {
     const t = cleanTicker(r.ticker);
     if (!t || !r.value) continue;

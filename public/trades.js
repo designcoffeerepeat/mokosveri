@@ -53,7 +53,7 @@ export function groupCongress(rows) {
         member: f.member || 'Unknown member',
         chamber: f.chamber || '',
         party: f.party || '',
-        trades,
+        items: trades,
         n: trades.length,
         buys: trades.filter((t) => t.type === 'buy').length,
         sells: trades.filter((t) => t.type === 'sell').length,
@@ -81,7 +81,7 @@ export function groupPeople(rows) {
         owner: f.owner || 'Unknown insider',
         title: f.title || '',
         company: f.company || '',
-        trades,
+        items: trades,
         n: trades.length,
         value: trades.reduce((s, t) => s + (t.value || 0), 0),
         tickers: rankTickers(trades),
@@ -158,10 +158,14 @@ const hay = (tab, r) =>
   (tab === 'insiders' ? [r.ticker, r.issuer, r.owners] : tab === 'purchases' ? [r.ticker, r.company, r.owner, r.title] : [r.ticker, r.member]).join(' ').toLowerCase();
 const matchQ = (tab, r, q) => !q || q.split(/\s+/).every((w) => hay(tab, r).includes(w));
 
+// Placeholder tickers some filers use (N/A, NONE) are never shown.
+const REAL_TICKER = /^(?!NONE$)[A-Z][A-Z0-9.\-]{0,9}$/;
+
 // Filters apply to single trades (or companies), before grouping.
 export function filterRows(tab, rows, st) {
   const q = (st.q || '').trim().toLowerCase();
   return (rows || []).filter((r) => {
+    if (!REAL_TICKER.test(r.ticker || '')) return false;
     if (!matchQ(tab, r, q)) return false;
     if (tab === 'insiders') {
       if (st.min && (r.total_value || 0) < st.min) return false;
@@ -198,7 +202,7 @@ export function viewGroups(tab, d, st) {
       if (!byTicker.has(r.ticker)) byTicker.set(r.ticker, []);
       byTicker.get(r.ticker).push(r);
     }
-    groups = filterRows(tab, d.companies, st).map((g) => ({ ...g, key: `t:${g.ticker}`, trades: (byTicker.get(g.ticker) || []).sort(byNewest('date', 'filed')) }));
+    groups = filterRows(tab, d.companies, st).map((g) => ({ ...g, key: `t:${g.ticker}`, items: (byTicker.get(g.ticker) || []).sort(byNewest('date', 'filed')) }));
   } else if (tab === 'purchases') {
     groups = groupPeople(filterRows(tab, d.purchases, st)).filter((g) => !st.min || g.value >= st.min);
   } else groups = groupCongress(filterRows(tab, d.congress, st));
@@ -221,7 +225,7 @@ export function tableHtml(tab, groups, st, limit = PAGE, opts = {}) {
     .slice(0, limit)
     .map((g, i) => {
       const o = open.has(g.key);
-      const trades = g.trades || [];
+      const trades = g.items || [];
       return `<tbody class="gp${i >= extraFrom ? ' xp-extra' : ''}"><tr class="gp-row${o ? ' open' : ''}" data-g="${esc(g.key)}" tabindex="0" aria-expanded="${o}" title="${trades.length ? `Show ${plural(trades.length, 'trade')}` : ''}">${C.map(([, , c, , cell]) => `<td class="${c}">${cell(g)}</td>`).join('')}</tr><tr class="gp-detail"${o ? '' : ' hidden'}><td colspan="${C.length}">${trades.length ? subTable(tab, trades) : '<div class="empty">No individual trades on file.</div>'}</td></tr></tbody>`;
     })
     .join('');
@@ -326,6 +330,7 @@ export async function renderTrades(app, api) {
     <div class="tr-count small muted" id="trCount"></div>
     <div class="card tbl-wrap" id="trTable"></div>
     <div class="tr-more" id="trMore"></div>
+    ${tab === 'congress' && (d.congress || []).some((r) => r.older) ? '<p class="small muted">Few members disclosed trades in the window, so older disclosures are included to show more people.</p>' : ''}
     ${tab === 'congress' && d.status && d.status.congress !== 'ok' ? `<p class="small muted">Congressional trade feed is unavailable right now (${esc(d.status.congress)}).</p>` : ''}
     <p class="small muted">${tab === 'congress' ? 'Members of Congress have up to 45 days to disclose a trade, and amounts are reported as ranges. Totals add up the low end of each range.' : 'Sources: our SEC Form 4 store, checked every 10 minutes, plus OpenInsider for filings not yet ingested. A purchase reported on several lines of one filing is shown once with the total.'}</p>`;
 
@@ -337,7 +342,7 @@ export async function renderTrades(app, api) {
     const groups = viewGroups(tab, d, st);
     tableEl.innerHTML = tableHtml(tab, groups, st, limit, { open });
     const shown = Math.min(groups.length, limit);
-    const trades = groups.reduce((s, g) => s + ((g.trades || []).length || 0), 0);
+    const trades = groups.reduce((s, g) => s + (g.items || []).length, 0);
     countEl.textContent = `${groups.length === total ? plural(groups.length, one, many) : `${groups.length} of ${plural(total, one, many)} match`}${trades ? ` · ${plural(trades, 'trade')}` : ''}`;
     moreEl.innerHTML = groups.length > shown ? `<button type="button" class="btn-ghost" id="trMoreBtn">Show ${Math.min(PAGE, groups.length - shown)} more (${shown} of ${groups.length} shown)</button>` : '';
     all[tab] = { ...st };
