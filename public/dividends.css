@@ -1,0 +1,62 @@
+/* Dividend aristocrats page */
+.dv-bar { margin-top: 22px; }
+.dv-lead { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+.dv-card { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; text-decoration: none; color: inherit; transition: background 0.2s; }
+.dv-card:hover { background: var(--surface-2); }
+.dv-card-h { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.dv-card-h .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dv-rank { font: 600 11px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 1px 7px; }
+.dv-card-k { display: flex; align-items: baseline; gap: 6px; }
+.dv-yield { font: 400 34px/1 var(--serif); }
+.dv-card-k small { color: var(--muted); }
+.dv-spark { width: 100%; height: 32px; }
+.dv-spark polyline { fill: none; stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+.dv-spark.up polyline { stroke: var(--up); }
+.dv-spark.down polyline { stroke: var(--down); }
+.dv-kv { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; }
+.dv-kv div { display: flex; justify-content: space-between; gap: 6px; font-size: 13px; }
+.dv-kv dt { color: var(--muted); }
+.dv-kv dd { margin: 0; }
+.dv-flags { display: flex; flex-wrap: wrap; gap: 4px; min-height: 0; }
+.dv-flags:empty { display: none; }
+.dv-f-trap { color: var(--down); border-color: color-mix(in srgb, var(--down) 40%, var(--line)); }
+.dv-f-high { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, var(--line)); }
+.dv-f-king { color: var(--up); border-color: color-mix(in srgb, var(--up) 40%, var(--line)); }
+.dv-empty { padding: 18px; color: var(--muted); }
+
+.dv-tbl td { vertical-align: middle; }
+.dv-tbl td a { text-decoration: none; }
+.dv-nm { color: var(--ink-2); }
+.dv-tbl .chip { margin-left: 4px; }
+.dv-th { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; white-space: nowrap; }
+.dv-th.on { color: var(--ink); font-weight: 600; }
+
+.dv-tk { text-decoration: none; display: inline-flex; gap: 4px; align-items: baseline; }
+.dv-tks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.dv-rd { padding: 14px 16px; }
+.dv-rd-h { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; margin-bottom: 10px; }
+.dv-rd-tks { display: flex; flex-wrap: wrap; gap: 10px; }
+.dv-rd-tk { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.dv-rd-tk small { color: var(--muted); font-size: 11px; }
+.dv-rd-posts { margin: 12px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+.dv-themes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+.dv-theme { padding: 14px 16px; }
+.dv-theme h3 { margin: 0 0 6px; font-size: 15px; }
+.dv-theme p { margin: 0; font-size: 14px; color: var(--ink-2); }
+
+.dv-res { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.dv-res-c { padding: 14px 16px; }
+.dv-res-c h3 { margin: 0 0 4px; font-size: 15px; }
+.dv-res-c ul { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 6px; }
+.dv-res-c li.dim { opacity: 0.6; }
+.dv-how { padding: 6px 16px; }
+.dv-how ul { margin: 10px 0; padding-left: 18px; display: grid; gap: 6px; font-size: 14px; }
+
+@media (max-width: 860px) {
+  .dv-lead, .dv-themes { grid-template-columns: 1fr 1fr; }
+  .dv-res { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .dv-lead, .dv-themes { grid-template-columns: 1fr; }
+  .dv-nm { display: none; }
+}

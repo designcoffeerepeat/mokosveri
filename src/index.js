@@ -15,6 +15,7 @@ import { buildSentiment } from './market.js';
 import { buildEvents } from './events.js';
 import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
+import { dividendsPage } from './dividends.js';
 
 const BUZZ_KEY = 'buzz:v1';
 // A ticker analysis counts as fresh for 15 minutes and is still shown, while a
@@ -243,6 +244,12 @@ async function handleApi(request, env, ctx, url) {
   if (path === '/api/events') {
     const watch = (url.searchParams.get('watch') || '').split(',').map((x) => cleanTicker(x)).filter(Boolean).slice(0, 25);
     const r = await settle(buildEvents(env, { watch }));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
+  // Dividend aristocrats: live yields and returns plus r/dividends chatter.
+  if (path === '/api/dividends') {
+    const r = await settle(dividendsPage(env));
     return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
   }
 

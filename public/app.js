@@ -515,6 +515,7 @@ function route() {
   if (m) renderTicker(decodeURIComponent(m[1]).toUpperCase());
   else if (/^#\/options\b/.test(location.hash)) import('/options.js').then((o) => o.renderOptions(app, api));
   else if (/^#\/sentiment\b/.test(location.hash)) import('/sentiment.js').then((o) => o.renderSentiment(app, api));
+  else if (/^#\/dividends\b/.test(location.hash)) import('/dividends.js').then((o) => o.renderDividends(app, api));
   else if (/^#\/events\b/.test(location.hash)) import('/events.js').then((o) => o.renderEvents(app, api));
   else if (/^#\/login\b/.test(location.hash)) import('/account.js').then((m) => m.renderLogin(app));
   else if (/^#\/signup\b/.test(location.hash)) import('/account.js').then((m) => m.renderSignup(app));
