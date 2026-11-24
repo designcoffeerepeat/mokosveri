@@ -183,6 +183,14 @@ tr.click:hover td { background: var(--surface-2); }
 .stat .k { font-size: 12px; color: var(--muted); }
 .stat .v { font: 500 16px var(--mono); margin-top: 2px; }
 .stat .h { font-size: 11.5px; color: var(--muted); }
+.stat-hero { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 14px 40px; padding: 20px 22px; background: var(--up-soft); border-right: 0; }
+.stat-hero .k { font-size: 13px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.stat-hero .v { font: 600 40px/1.1 var(--mono); color: var(--up); margin-top: 4px; }
+.stat-hero .h { font-size: 12.5px; color: var(--ink-2); }
+.hero-facts { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0; }
+.hero-facts dt { font-size: 12px; color: var(--muted); }
+.hero-facts dd { margin: 2px 0 0; font: 500 15px var(--mono); }
+@media (max-width: 560px) { .stat-hero .v { font-size: 34px; } .hero-facts { gap: 10px 20px; } }
 
 .chart-box { padding: 10px 8px 4px; }
 .chart-box svg { width: 100%; height: 260px; display: block; }
