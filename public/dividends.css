@@ -60,3 +60,4 @@
   .dv-lead, .dv-themes { grid-template-columns: 1fr; }
   .dv-nm { display: none; }
 }
+.dv-f-cc { color: var(--warn); border-style: dashed; }

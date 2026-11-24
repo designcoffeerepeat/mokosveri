@@ -1,8 +1,8 @@
 // Offline test for the dividend aristocrats page: mocks Yahoo quote, spark and
 // Reddit. Run: node test/dividends.mjs
 import assert from 'node:assert/strict';
-import { ARISTOCRATS, YIELD_FALLBACK, mentionsIn, tallyReddit, priceReturns, parseSpark, rowFor, flagsFor, dividendsPage } from '../src/dividends.js';
-import { pickRows, tableHtml, leaderCards, redditHtml, researchHtml } from '../public/dividends.js';
+import { ARISTOCRATS, ETFS, YIELD_FALLBACK, mentionsIn, tallyReddit, priceReturns, parseSpark, rowFor, flagsFor, dividendsPage } from '../src/dividends.js';
+import { pickRows, etfTableHtml, tableHtml, leaderCards, redditHtml, researchHtml } from '../public/dividends.js';
 
 // --- static data
 assert.equal(ARISTOCRATS.length, 69, '69 aristocrats');
@@ -88,6 +88,11 @@ globalThis.fetch = async (url) => {
     const ts = pts.map((p) => Math.floor(p.t / 1000));
     return res(Object.fromEntries(syms.map((s) => [s, { timestamp: ts, close: pts.map((p) => p.c) }])));
   }
+  if (url.includes('/v8/finance/chart/')) {
+    const ts = pts.map((p) => Math.floor(p.t / 1000));
+    const div = { a: { date: Math.floor((now - 30 * 864e5) / 1000), amount: 1.5 }, b: { date: Math.floor((now - 120 * 864e5) / 1000), amount: 1.5 }, c: {} };
+    return res({ chart: { result: [{ meta: {}, timestamp: ts, indicators: { quote: [{ open: ts.map(() => 1), high: ts.map(() => 1), low: ts.map(() => 1), close: pts.map((p) => p.c), volume: ts.map(() => 0) }] }, events: { dividends: div } }] } });
+  }
   if (url.includes('reddit.com')) return res({ error: 'blocked' }, 403);
   return res({}, 404);
 };
@@ -100,7 +105,10 @@ assert.equal(d.reddit.ok, false, 'Reddit refusal is reported, not thrown');
 assert.ok(d.rows.every((x) => x.r1y != null), 'every row has a 1y return');
 assert.equal(d.rows.find((x) => x.t === 'WST').yieldSrc, 'Oct 23', 'missing live quote falls back');
 assert.ok(calls.filter((u) => u.includes('/v8/finance/spark')).length === 4, 'spark in chunks of 20');
-assert.ok(calls.length < 40, `stays under the subrequest limit (${calls.length})`);
+assert.equal(d.etfs.length, ETFS.length);
+assert.ok(d.etfs.every((x) => x.yield != null && x.r1y != null), 'every ETF has a yield and a 1y return');
+assert.ok(d.etfs.find((x) => x.t === 'JEPI').flags.some((f) => f.k === 'cc'), 'covered call funds are flagged');
+assert.ok(calls.length < 45, `stays under the subrequest limit (${calls.length})`);
 
 // --- HTML renders
 const byT = Object.fromEntries(d.rows.map((x) => [x.t, x]));
@@ -112,5 +120,10 @@ assert.ok(leaderCards(picked, 'tr1y').includes('dv-card'));
 assert.ok(redditHtml(d, byT).includes('unavailable'));
 assert.ok(redditHtml({ ...d, reddit: { ok: true, asOf: new Date().toISOString(), ...t } }, byT).includes('Is $PEP a buy'));
 assert.ok(researchHtml(d, byT).includes('Morningstar'));
+assert.ok(etfTableHtml(d.etfs, { min: 0, sort: 'years', sector: 'all' }).includes('SCHD'), 'ETF table ranks by yield when the stock sort is years');
+// Odd Yahoo values (objects, strings) do not break a row.
+const odd = rowFor(ARISTOCRATS[0], { regularMarketPrice: {}, dividendRate: '1.2', exDividendDate: {}, trailingAnnualDividendYield: 'x' }, pts, now);
+assert.equal(odd.exDiv, null);
+assert.ok(odd.price > 0);
 
 console.log('dividends: all checks passed');
