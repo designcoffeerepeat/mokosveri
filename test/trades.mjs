@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { mergePurchases, groupByCompany, buildTrades } from '../src/trades.js';
-import { filterRows, sortRows, tableHtml, tabFromHash, COLS, DEFAULT_SORT } from '../public/trades.js';
+import { filterRows, sortRows, tableHtml, tabFromHash, COLS, DEFAULT_SORT, groupCongress, groupPeople, viewGroups, homeCongressHtml, personKey } from '../public/trades.js';
 
 for (const f of ['src/trades.js', 'public/trades.js', 'public/trades.css', 'src/sources/congress.js', 'public/app.js']) assert.ok(!readFileSync(new URL('../' + f, import.meta.url), 'utf8').includes('—'), `${f} has no em dash`);
 
@@ -88,22 +88,54 @@ assert.equal(filterRows('congress', t.congress, { ...base, chamber: 'Senate' }).
 assert.equal(filterRows('congress', t.congress, { ...base, party: 'D' }).length, 5);
 assert.equal(filterRows('congress', t.congress, { ...base, q: 'nvda' }).length, 5);
 assert.equal(filterRows('congress', t.congress, { ...base, q: 'mem 31' }).length, 1, 'every word must match');
-assert.equal(filterRows('purchases', merged, { ...base, min: 1e6 }).length, 1);
 assert.equal(filterRows('purchases', merged, { ...base, csuite: true }).length, 2);
 assert.equal(filterRows('insiders', groups, { ...base, q: 'doe' }).length, 1, 'search covers insider names');
 
-const byAmt = sortRows('congress', t.congress, 'amountMin', false);
-assert.equal(byAmt[0].amountMin, 45000);
-assert.equal(sortRows('purchases', merged, 'value', true)[0].value, 100);
+// Congress grouped by member: the same person trading many times is one row.
+const many = [
+  ...Array.from({ length: 40 }, (_, i) => ({ member: 'Nancy Pelosi', chamber: 'House', party: 'Democrat', ticker: i % 3 ? 'NVDA' : 'AAPL', type: i % 4 ? 'buy' : 'sell', amount: '$1,001 - $15,000', amountMin: 1001, txDate: dAgo(20 + (i % 9)), filedDate: dAgo(2 + (i % 9)) })),
+  { member: 'Tommy  Tuberville', chamber: 'Senate', party: 'Republican', ticker: 'XOM', type: 'buy', amount: '$15,001 - $50,000', amountMin: 15001, txDate: dAgo(5), filedDate: dAgo(1) },
+  { member: 'tommy tuberville', chamber: 'Senate', party: 'Republican', ticker: 'CVX', type: 'sell', amount: '$15,001 - $50,000', amountMin: 15001, txDate: dAgo(6), filedDate: dAgo(3) },
+];
+const cg = groupCongress(many);
+assert.equal(cg.length, 2, 'two members');
+assert.equal(cg[0].member, 'Tommy  Tuberville', 'newest disclosure first');
+assert.equal(cg[0].n, 2, 'spacing and case do not split a member');
+const np = cg.find((g) => g.member === 'Nancy Pelosi');
+assert.equal(np.n, 40);
+assert.equal(np.buys + np.sells, 40);
+assert.deepEqual(np.tickers, ['NVDA', 'AAPL'], 'most traded ticker first');
+assert.equal(np.amountMin, 40040);
+assert.ok(np.trades[0].filedDate >= np.trades[39].filedDate, 'member trades newest first');
+
+const home = homeCongressHtml(many, 1);
+assert.equal(home.count, 2);
+assert.equal((home.html.match(/class="gp-row/g) || []).length, 2);
+assert.equal((home.html.match(/xp-extra/g) || []).length, 1, 'rows past the first few start hidden');
+assert.equal((home.html.match(/<tr class="click" data-t=/g) || []).length, 42, 'every trade is in an expandable row');
+assert.ok(!home.html.includes('data-sort'), 'home table is not sortable');
+
+// Insiders grouped by person, with the size filter on their total.
+const ppl = groupPeople([...merged, { ...merged[0], owner: 'ROE, RICH', value: 50, ticker: 'ABC', company: 'Abc Corp' }]);
+const roe = ppl.find((g) => g.owner.toLowerCase().startsWith('roe'));
+assert.equal(roe.n, 2, 'same insider spelled differently is one row');
+assert.deepEqual([...roe.tickers].sort(), ['ABC', 'XYZ']);
+assert.equal(personKey('Smith, John A.'), 'smith john');
+const d = { companies: groups, purchases: merged, congress: many };
+assert.equal(viewGroups('purchases', d, { ...base, min: 1e6, sort: 'value' }).length, 1);
+assert.equal(viewGroups('congress', d, { ...base, q: 'xom', sort: 'latest' })[0].n, 1, 'search narrows a member to matching trades');
+const comp = viewGroups('insiders', d, { ...base, sort: 'buyers' });
+assert.equal(comp.find((g) => g.ticker === 'ABC').trades.length, 2, 'company rows carry their purchases');
+assert.equal(sortRows('congress', cg, 'n', false)[0].member, 'Nancy Pelosi');
 assert.equal(sortRows('insiders', groups, 'ticker', true)[0].ticker, 'ABC');
-assert.equal(sortRows('insiders', groups, 'buyers', false)[0].buyers, 2);
 for (const tab of Object.keys(COLS)) assert.ok(COLS[tab].some((c) => c[0] === DEFAULT_SORT[tab][0]), `${tab} default sort is a column`);
 
-const html = tableHtml('congress', byAmt, { sort: 'amountMin', asc: false }, 4);
-assert.equal((html.match(/<tr class="click"/g) || []).length, 4, 'limit respected');
+const html = tableHtml('congress', cg, { sort: 'latest', asc: false }, 1, { open: new Set([cg[0].key]) });
+assert.equal((html.match(/class="gp-row/g) || []).length, 1, 'limit respected');
 assert.ok(html.includes('aria-sort="descending"'));
+assert.ok(html.includes('aria-expanded="true"'), 'open groups stay open');
 assert.ok(tableHtml('purchases', [], {}).includes('No trades match'));
-assert.ok(tableHtml('insiders', [{ ...groups[0], issuer: '<b>x</b>' }], { sort: 'buyers' }).includes('&lt;b&gt;'), 'escapes text');
+assert.ok(tableHtml('insiders', [{ ...groups[0], key: 'x', issuer: '<b>x</b>', trades: [] }], { sort: 'buyers' }).includes('&lt;b&gt;'), 'escapes text');
 
 assert.equal(tabFromHash('#/trades/congress'), 'congress');
 assert.equal(tabFromHash('#/trades'), 'insiders');
