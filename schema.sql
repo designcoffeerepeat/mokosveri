@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS watchlists (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   position INTEGER NOT NULL DEFAULT 0,
+  columns TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_watchlists_user ON watchlists(user_id, position);

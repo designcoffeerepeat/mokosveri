@@ -1,6 +1,7 @@
 // One watchlist as a live, sortable, reorderable table card. Used by the
 // Watchlist page and by the accordion on the home page.
 import { esc, req } from './session.js';
+import { COLUMNS, COLUMN_GROUPS, DEFAULT_COLUMNS, MAX_COLUMNS, cleanColumns, columnNeeds } from './wlcols.js';
 
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? 'n/a' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
 const fmtPct = (v, d = 1) => (v == null || !isFinite(v) ? 'n/a' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
@@ -18,11 +19,27 @@ const extTitle = (x) => {
 // Second line under the price and today cells for pre-market or after hours trading.
 const extPx = (x) => (x ? `<div class="ext" title="${esc(extTitle(x))}"><span class="ext-tag ext-${x.session}">${EXT_TAG[x.session]}</span>${fmtNum(x.price)}</div>` : '');
 const extCh = (x) => (x ? `<div class="ext ${cls(x.changePct)}" title="${esc(extTitle(x))}">${fmtPct(x.changePct, 2)}</div>` : '');
-// Sort values for the "Pre/After %" and "Since added" choices.
+// Values worked out from the live price: "Pre/After %", "Since added" and "Off high".
 const withExt = (r) => {
   r.extPct = r.ext ? r.ext.changePct : null;
   r.sinceAdded = r.addedPrice > 0 && r.price != null && isFinite(r.price) ? (r.price / r.addedPrice - 1) * 100 : null;
+  r.fromHigh = r.hi52 > 0 && r.price != null && isFinite(r.price) ? (Math.min(r.price, r.hi52) / r.hi52 - 1) * 100 : null;
   return r;
+};
+// 2.85T, 412.3B, 18.6M, 950K
+const fmtBig = (v, d = 2) => {
+  if (v == null || !isFinite(v)) return 'n/a';
+  const a = Math.abs(v);
+  for (const [n, s] of [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']]) if (a >= n) return `${(v / n).toFixed(a / n >= 100 ? Math.max(0, d - 1) : d)}${s}`;
+  return String(Math.round(v));
+};
+const monthDay = (ms) => new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const daysUntil = (ms) => {
+  const a = new Date();
+  a.setHours(0, 0, 0, 0);
+  const b = new Date(ms);
+  b.setHours(0, 0, 0, 0);
+  return Math.round((b - a) / 864e5);
 };
 const fmtDay = (ms, long = false) => {
   const d = new Date(ms);
@@ -81,23 +98,98 @@ function spark(values, w = 84, h = 26) {
   return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" fill="none" stroke="var(--${up ? 'up' : 'down'})" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
 }
 
-const COLS = [
-  { key: 'ticker', label: 'Ticker', num: false },
-  { key: 'name', label: 'Name', num: false, cls: 'wl-name' },
-  { key: 'price', label: 'Price', num: true },
-  { key: 'change1d', label: 'Today', num: true },
-  { key: 'ret1m', label: '1M', num: true, cls: 'wl-m' },
-  { key: 'ret1y', label: '1Y', num: true, cls: 'wl-y' },
-  { key: 'score', label: 'Score', num: true },
-  { key: 'addedAt', label: 'Added', num: true, cls: 'wl-ad' },
-];
+const COL = new Map(COLUMNS.map((c) => [c.key, c]));
+// Cell classes that keep the old phone layout (name, 1Y and chart drop first).
+const CELL_CLS = { name: 'wl-name', ret1m: 'wl-m', ret1y: 'wl-y', spark: 'wl-sp', addedAt: 'wl-ad' };
+// Columns that move with the live price, redrawn on every poll.
+const LIVE = new Set(['price', 'change1d', 'sinceAdded', 'fromHigh', 'addedAt']);
+const pctCell = (v, d = 1) => (v == null ? ['', ''] : [fmtPct(v, d), cls(v)]);
+
+// [html, extra class, title] for column `k` of row `r`.
+function cellParts(k, r) {
+  const has = r.price != null;
+  switch (k) {
+    case 'name':
+      return [esc(r.name || '')];
+    case 'price':
+      return [r.pending ? '<span class="muted">loading</span>' : r.error ? '<span class="muted">n/a</span>' : `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`];
+    case 'change1d':
+      return [has ? `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}` : ''];
+    case 'ret5d':
+    case 'ret1m':
+    case 'ret3m':
+    case 'ytd':
+    case 'ret1y':
+    case 'vs50':
+    case 'vs200':
+    case 'sinceAdded':
+      return has || k === 'sinceAdded' ? pctCell(r[k]) : [''];
+    case 'fromHigh':
+      return r.fromHigh == null ? [''] : [r.fromHigh > -0.05 ? 'At high' : fmtPct(r.fromHigh), r.fromHigh > -0.05 ? 'up' : '', r.hi52 ? `52 week high ${fmtNum(r.hi52)}` : ''];
+    case 'spark':
+      return [spark(r.spark)];
+    case 'score': {
+      if (r.score == null) return [''];
+      const est = r.scoreSource && r.scoreSource !== 'full';
+      return [`<span class="pill ${pillCls(r.score)} wl-pill" title="${esc(scoreTitle(r))}">${est ? '~' : ''}${r.score > 0 ? '+' : ''}${r.score}</span>`];
+    }
+    case 'addedAt':
+      return [addedCell(r)];
+    case 'mcap':
+      return [r.mcap == null ? '' : fmtBig(r.mcap)];
+    case 'pe':
+    case 'fwdPe':
+    case 'pb': {
+      const eps = k === 'pe' ? r.eps : k === 'fwdPe' ? r.fwdEps : null;
+      if (r[k] == null) return eps != null && eps < 0 ? ['<span class="muted small">loss</span>', '', 'No P/E: the company is losing money'] : [''];
+      return [fmtNum(r[k], 1)];
+    }
+    case 'eps':
+    case 'fwdEps':
+    case 'beta':
+    case 'hi52':
+    case 'lo52':
+      return [r[k] == null ? '' : fmtNum(r[k]), k.endsWith('ps') ? cls(r[k]) : ''];
+    case 'rating':
+      return r.rating == null ? [''] : [`${fmtNum(r.rating, 1)} <span class="muted small">${esc(r.ratingLabel || '')}</span>`, '', `Average analyst rating ${fmtNum(r.rating, 1)} (${r.ratingLabel || ''}). 1 is strong buy, 5 is sell.`];
+    case 'earnings': {
+      if (r.earnings == null) return [''];
+      const n = daysUntil(r.earnings);
+      const when = n === 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`;
+      return [`${r.earningsEst ? '~' : ''}${monthDay(r.earnings)}`, n <= 7 ? 'wl-soon' : '', `${r.earningsEst ? 'Expected' : 'Confirmed'} ${fmtDay(r.earnings, true)}, ${when}${r.earningsEst ? '. Not confirmed by the company yet.' : ''}`];
+    }
+    case 'exDiv': {
+      if (r.exDiv == null) return [''];
+      const past = daysUntil(r.exDiv) < 0;
+      return [monthDay(r.exDiv), past ? 'muted' : '', past ? 'Last ex-dividend date. The next one is not set yet.' : 'Next ex-dividend date'];
+    }
+    case 'divYield':
+      return [r.divYield == null ? '' : `${fmtNum(r.divYield)}%`];
+    case 'volume':
+    case 'avgVolume':
+      return [r[k] == null ? '' : fmtBig(r[k], 1)];
+    case 'relVolume':
+      return [r.relVolume == null ? '' : `${fmtNum(r.relVolume)}x`, r.relVolume >= 1.5 ? 'up' : ''];
+    case 'rsi':
+      return [r.rsi == null ? '' : fmtNum(r.rsi, 0), r.rsi >= 70 ? 'down' : r.rsi <= 30 ? 'up' : ''];
+    default:
+      return [''];
+  }
+}
+function cellHtml(k, r) {
+  const c = COL.get(k);
+  const [html, extra, title] = cellParts(k, r);
+  const klass = [c.num ? 'num' : '', CELL_CLS[k] || '', extra || ''].filter(Boolean).join(' ');
+  const dc = k === 'price' ? ' data-c="price"' : k === 'change1d' ? ' data-c="chg"' : '';
+  return `<td data-k="${k}"${klass ? ` class="${klass}"` : ''}${title ? ` title="${esc(title)}"` : ''}${dc}>${html}</td>`;
+}
 
 // Sort choice is remembered per list.
 const sortKey = (id) => `wlSort:${id}`;
 function readSort(id) {
   try {
     const s = JSON.parse(localStorage.getItem(sortKey(id)) || localStorage.getItem('wlSort'));
-    if (s && (s.key === 'custom' || s.key === 'extPct' || s.key === 'sinceAdded' || COLS.some((c) => c.key === s.key))) return s;
+    if (s && (s.key === 'custom' || s.key === 'extPct' || s.key === 'ticker' || (COL.has(s.key) && COL.get(s.key).sortable !== false))) return s;
   } catch {}
   return { key: 'custom', dir: 1 };
 }
@@ -127,14 +219,20 @@ export function mountWatchTable(root, listId, opts = {}) {
   let dragging = false;
   let pollTimer = null;
   let loaded = false;
+  let cols = DEFAULT_COLUMNS.slice(); // replaced by the list's saved choice on load
+  let fetchedFor = { stats: false, spy: false }; // what the last load fetched
   const active = opts.active || (() => true);
 
   root.innerHTML = `<div class="card wl-card">
       <div class="wl-bar">
         <form class="wl-add" autocomplete="off"><input type="text" maxlength="12" placeholder="Add a ticker, e.g. AAPL" aria-label="Add a ticker to this watchlist" spellcheck="false" /><button type="submit">Add</button></form>
         <div class="wl-live muted small" role="status"></div>
-        <label class="wl-sort"><span class="muted small">Sort</span><select>${['<option value="custom">My order</option>', ...COLS.map((c) => `<option value="${c.key}">${c.label}</option>`), '<option value="extPct">Pre/After %</option>', '<option value="sinceAdded">Since added %</option>'].join('')}</select><button type="button" class="btn-ghost sm wl-dir" aria-label="Flip sort direction" title="Flip sort direction"></button></label>
+        <div class="wl-tools-r">
+          <label class="wl-sort"><span class="muted small">Sort</span><select></select><button type="button" class="btn-ghost sm wl-dir" aria-label="Flip sort direction" title="Flip sort direction"></button></label>
+          <button type="button" class="btn-ghost sm wl-colbtn" aria-expanded="false">Columns</button>
+        </div>
       </div>
+      <div class="wl-colpanel" hidden></div>
       <div class="auth-err wl-err" role="alert"></div>
       <div class="tbl-wrap wl-tbl"><div class="loading"><div class="spinner"></div>Loading…</div></div>
       <div class="wl-foot muted small"></div>
@@ -146,6 +244,14 @@ export function mountWatchTable(root, listId, opts = {}) {
   const gen = (root._wlGen = (root._wlGen || 0) + 1);
   const alive = () => root.isConnected && root._wlGen === gen;
   const q = (extra = '') => `list=${encodeURIComponent(listId)}${extra}`;
+
+  // Sort menu: My order, then the shown columns, then the other sortable ones.
+  function sortOptions() {
+    const shown = cols.filter((k) => COL.get(k).sortable !== false);
+    const rest = COLUMNS.filter((c) => c.sortable !== false && !cols.includes(c.key)).map((c) => c.key);
+    const opt = (k) => `<option value="${k}">${k === 'ticker' ? 'Ticker' : COL.get(k).label}</option>`;
+    return `<option value="custom">My order</option><optgroup label="Shown">${['ticker', ...shown].map(opt).join('')}<option value="extPct">Pre/After %</option></optgroup>${rest.length ? `<optgroup label="Other">${rest.map(opt).join('')}</optgroup>` : ''}`;
+  }
 
   const sorted = () => {
     if (sort.key === 'custom') return items.slice();
@@ -161,11 +267,17 @@ export function mountWatchTable(root, listId, opts = {}) {
   };
 
   function paint() {
-    $('.wl-sort select').value = sort.key;
+    const sel = $('.wl-sort select');
+    const opts = sortOptions();
+    if (sel._opts !== opts) {
+      sel.innerHTML = opts;
+      sel._opts = opts;
+    }
+    sel.value = sort.key;
     $('.wl-dir').textContent = sort.key === 'custom' ? '' : sort.dir > 0 ? 'Asc' : 'Desc';
     $('.wl-dir').hidden = sort.key === 'custom';
     $('.wl-foot').textContent = items.length
-      ? `${items.length} of ${max} tickers. ${sort.key === 'custom' ? 'Drag the handle (or focus it and use the arrow keys) to reorder.' : 'Click a column again to flip it. Choose "My order" to drag and reorder.'} Scores marked ~ are quick estimates. Hover or tap an Added date to see the move since then.`
+      ? `${items.length} of ${max} tickers. ${sort.key === 'custom' ? 'Drag the handle (or focus it and use the arrow keys) to reorder.' : 'Click a column again to flip it. Choose "My order" to drag and reorder.'}${cols.includes('score') ? ' Scores marked ~ are quick estimates.' : ''}${cols.includes('earnings') ? ' Earnings dates marked ~ are not confirmed yet.' : ''}${cols.includes('addedAt') ? ' Hover or tap an Added date to see the move since then.' : ''} Use Columns to choose what shows.`
       : '';
     if (!items.length) {
       table.innerHTML = '<div class="empty">This list is empty. Add a ticker above, or use "Add to watchlist" on any ticker page.</div>';
@@ -173,27 +285,28 @@ export function mountWatchTable(root, listId, opts = {}) {
     }
     const custom = sort.key === 'custom';
     const arrow = (k) => (sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
+    const th = (k, label, num, extra = '', title = '') =>
+      `<th class="${[num ? 'num' : '', extra].filter(Boolean).join(' ')}" aria-sort="${sort.key === k ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"${title ? ` title="${esc(title)}"` : ''}><button type="button" class="th-btn" data-k="${k}">${label}${arrow(k)}</button></th>`;
+    const showAdded = cols.includes('addedAt');
     table.innerHTML = `<table class="wl"><thead><tr>
       <th class="wl-h" aria-label="Reorder"></th>
-      ${COLS.map((c) => `<th class="${c.num ? 'num ' : ''}${c.cls || ''}" aria-sort="${sort.key === c.key ? (sort.dir > 0 ? 'ascending' : 'descending') : 'none'}"><button type="button" class="th-btn" data-k="${c.key}">${c.label}${arrow(c.key)}</button></th>`).join('')}
-      <th class="wl-sp">30 days</th><th aria-label="Remove"></th></tr></thead>
-      <tbody>${sorted()
-        .map((r) => {
-          const est = r.scoreSource && r.scoreSource !== 'full';
-          return `<tr data-t="${esc(r.ticker)}">
-            <td class="wl-h">${custom ? `<button type="button" class="handle" aria-label="Move ${esc(r.ticker)}. Use arrow keys." title="Drag to reorder">⋮⋮</button>` : ''}</td>
-            <td class="mono"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a><div class="wl-ad-sub" data-a="short">${addedCell(r, true)}</div></td>
-            <td class="wl-name">${esc(r.name || '')}</td>
-            <td class="num" data-c="price">${r.pending ? '<span class="muted">loading</span>' : r.error ? '<span class="muted">n/a</span>' : `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`}</td>
-            <td class="num" data-c="chg">${r.price != null ? `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}` : ''}</td>
-            <td class="num wl-m ${cls(r.ret1m)}">${r.price != null ? fmtPct(r.ret1m) : ''}</td>
-            <td class="num wl-y ${cls(r.ret1y)}">${r.price != null ? fmtPct(r.ret1y) : ''}</td>
-            <td class="num">${r.score != null ? `<span class="pill ${pillCls(r.score)} wl-pill" title="${esc(scoreTitle(r))}">${est ? '~' : ''}${r.score > 0 ? '+' : ''}${r.score}</span>` : ''}</td>
-            <td class="num wl-ad" data-a>${addedCell(r)}</td>
-            <td class="wl-sp">${spark(r.spark)}</td>
-            <td><button type="button" class="rm" aria-label="Remove ${esc(r.ticker)}" title="Remove">&times;</button></td>
-          </tr>`;
+      ${th('ticker', 'Ticker', false, 'wl-tk')}
+      ${cols
+        .map((k) => {
+          const c = COL.get(k);
+          return c.sortable === false ? `<th class="${CELL_CLS[k] || ''}" title="${esc(c.help)}">${c.label}</th>` : th(k, c.label, c.num, CELL_CLS[k] || '', c.help);
         })
+        .join('')}
+      <th aria-label="Remove"></th></tr></thead>
+      <tbody>${sorted()
+        .map(
+          (r) => `<tr data-t="${esc(r.ticker)}">
+            <td class="wl-h">${custom ? `<button type="button" class="handle" aria-label="Move ${esc(r.ticker)}. Use arrow keys." title="Drag to reorder">⋮⋮</button>` : ''}</td>
+            <td class="mono wl-tk"><a href="#/t/${encodeURIComponent(r.ticker)}">${esc(r.ticker)}</a>${showAdded ? `<div class="wl-ad-sub" data-a="short">${addedCell(r, true)}</div>` : ''}</td>
+            ${cols.map((k) => cellHtml(k, r)).join('')}
+            <td><button type="button" class="rm" aria-label="Remove ${esc(r.ticker)}" title="Remove">&times;</button></td>
+          </tr>`
+        )
         .join('')}</tbody></table>`;
     refreshTip();
   }
@@ -301,14 +414,13 @@ export function mountWatchTable(root, listId, opts = {}) {
       r.pending = false;
       r.error = null;
     }
-    if (!dragging && (sort.key === 'price' || sort.key === 'change1d' || sort.key === 'extPct' || sort.key === 'sinceAdded')) paint();
+    if (!dragging && (LIVE.has(sort.key) || sort.key === 'extPct')) paint();
     else
       for (const r of items) {
         const tr = table.querySelector(`tr[data-t="${CSS.escape(r.ticker)}"]`);
         if (!tr || r.price == null) continue;
-        tr.querySelector('[data-c="price"]').innerHTML = `<span class="px">${fmtNum(r.price)}</span>${extPx(r.ext)}`;
-        tr.querySelector('[data-c="chg"]').innerHTML = `<span class="px ${cls(r.change1d)}">${fmtPct(r.change1d, 2)}</span>${extCh(r.ext)}`;
-        for (const a of tr.querySelectorAll('[data-a]')) a.innerHTML = addedCell(r, a.dataset.a === 'short');
+        for (const td of tr.querySelectorAll('td[data-k]')) if (LIVE.has(td.dataset.k)) td.outerHTML = cellHtml(td.dataset.k, r);
+        for (const a of tr.querySelectorAll('[data-a="short"]')) a.innerHTML = addedCell(r, true);
       }
     refreshTip();
     paintLive();
@@ -342,6 +454,8 @@ export function mountWatchTable(root, listId, opts = {}) {
       loaded = true;
       items = d.items.map(withExt);
       max = d.max;
+      if (d.list && Array.isArray(d.list.columns)) cols = cleanColumns(d.list.columns);
+      fetchedFor = { stats: columnNeeds(cols, 'stats'), spy: columnNeeds(cols, 'spy') };
       if (d.at) meta = { refreshSec: d.refreshSec, market: d.market, at: d.at };
       err('');
       paint();
@@ -393,7 +507,7 @@ export function mountWatchTable(root, listId, opts = {}) {
     if (th) {
       const k = th.dataset.k;
       // Click cycles: first direction (descending for numbers), flipped, then back to my order.
-      const first = COLS.find((c) => c.key === k).num ? -1 : 1;
+      const first = k !== 'ticker' && COL.get(k).num && !COL.get(k).asc ? -1 : 1;
       if (sort.key !== k) sort = { key: k, dir: first };
       else if (sort.dir === first) sort = { key: k, dir: -first };
       else sort = { key: 'custom', dir: 1 };
@@ -474,6 +588,88 @@ export function mountWatchTable(root, listId, opts = {}) {
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
+  });
+
+  // ---------- column picker ----------
+  const panel = $('.wl-colpanel');
+  const colBtn = $('.wl-colbtn');
+  let saveTimer = null;
+  function paintPanel() {
+    const shown = cols
+      .map(
+        (k, i) => `<li data-k="${k}"><span class="wl-cp-name">${COL.get(k).label}</span>
+          <button type="button" class="wl-cp-mv" data-mv="-1" aria-label="Move ${esc(COL.get(k).label)} left" ${i === 0 ? 'disabled' : ''}>&larr;</button>
+          <button type="button" class="wl-cp-mv" data-mv="1" aria-label="Move ${esc(COL.get(k).label)} right" ${i === cols.length - 1 ? 'disabled' : ''}>&rarr;</button>
+          <button type="button" class="wl-cp-rm" aria-label="Hide ${esc(COL.get(k).label)}">&times;</button></li>`
+      )
+      .join('');
+    const full = cols.length >= MAX_COLUMNS;
+    panel.innerHTML = `<div class="wl-cp-head"><b>Columns for this list</b><span class="muted small">${cols.length} of ${MAX_COLUMNS} shown. Saved to your account.</span></div>
+      <div class="wl-cp-sub muted small">Shown, left to right</div>
+      <ol class="wl-cp-shown">${shown || '<li class="muted small">Only the ticker. Tick a few below.</li>'}</ol>
+      <div class="wl-cp-groups">${COLUMN_GROUPS.map(
+        (g) => `<fieldset><legend>${g}</legend>${COLUMNS.filter((c) => c.group === g)
+          .map((c) => {
+            const on = cols.includes(c.key);
+            return `<label title="${esc(c.help)}"><input type="checkbox" value="${c.key}" ${on ? 'checked' : ''} ${!on && full ? 'disabled' : ''}/> ${c.label}</label>`;
+          })
+          .join('')}</fieldset>`
+      ).join('')}</div>
+      <div class="wl-cp-foot"><button type="button" class="btn-ghost sm wl-cp-reset">Reset to default</button><button type="button" class="btn-ghost sm wl-cp-done">Done</button></div>`;
+  }
+  function setCols(next, focusSel) {
+    cols = cleanColumns(next);
+    paintPanel();
+    if (focusSel) {
+      const el = panel.querySelector(focusSel);
+      if (el) el.focus();
+    }
+    paint();
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(async () => {
+      try {
+        await req('PUT', `/api/watchlists/${encodeURIComponent(listId)}/columns`, { columns: cols });
+        err('');
+      } catch (e) {
+        err(e.message);
+      }
+      // New columns that need data the last load skipped.
+      if ((columnNeeds(cols, 'stats') && !fetchedFor.stats) || (columnNeeds(cols, 'spy') && !fetchedFor.spy)) load();
+    }, 500);
+  }
+  colBtn.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    colBtn.setAttribute('aria-expanded', String(open));
+    if (open) paintPanel();
+  });
+  panel.addEventListener('change', (e) => {
+    const box = e.target.closest('input[type=checkbox]');
+    if (!box) return;
+    const k = box.value;
+    setCols(box.checked ? [...cols, k] : cols.filter((x) => x !== k), `input[value="${k}"]`);
+  });
+  panel.addEventListener('click', (e) => {
+    if (e.target.closest('.wl-cp-done')) {
+      panel.hidden = true;
+      colBtn.setAttribute('aria-expanded', 'false');
+      colBtn.focus();
+      return;
+    }
+    if (e.target.closest('.wl-cp-reset')) return setCols(DEFAULT_COLUMNS);
+    const li = e.target.closest('.wl-cp-shown li[data-k]');
+    if (!li) return;
+    const k = li.dataset.k;
+    if (e.target.closest('.wl-cp-rm')) return setCols(cols.filter((x) => x !== k));
+    const mv = e.target.closest('.wl-cp-mv');
+    if (mv) {
+      const i = cols.indexOf(k);
+      const j = i + Number(mv.dataset.mv);
+      if (j < 0 || j >= cols.length) return;
+      const next = cols.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      setCols(next, `li[data-k="${k}"] .wl-cp-mv[data-mv="${mv.dataset.mv}"]:not([disabled]), li[data-k="${k}"] .wl-cp-mv:not([disabled])`);
+    }
   });
 
   if (active()) load();
