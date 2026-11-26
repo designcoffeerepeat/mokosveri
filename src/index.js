@@ -16,7 +16,7 @@ import { buildEvents } from './events.js';
 import { earningsMonth, earningsDay, parseWatch } from './earningscal.js';
 import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
-import { dividendsPage } from './dividends.js';
+import { dividendsPage, dividendCalc } from './dividends.js';
 import { buildBreakout } from './breakout.js';
 import { radarPage } from './radar.js';
 import { buildTrades, TRADES_KEY } from './trades.js';
@@ -148,6 +148,15 @@ async function handleApi(request, env, ctx, url) {
 
   // Congress trades for the home page table, in their own request so the
   // paging gets a fresh fetch budget. Cached for an hour inside congressAll.
+  // Income calculator: yield, payout count and dividend growth for one ticker.
+  const dcm = path.match(/^\/api\/dividends\/calc\/([^/]+)$/);
+  if (dcm) {
+    const t = cleanTicker(decodeURIComponent(dcm[1]));
+    if (!t || isIndex(t)) return json({ error: 'Enter a stock or fund ticker' }, 400);
+    const r = await settle(dividendCalc(env, t));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
   if (path === '/api/congress') {
     const r = await settle(congressAll(env, 90));
     return r.ok ? json({ days: 90, trades: r.value }) : json({ error: r.error }, 502);

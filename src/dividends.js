@@ -470,3 +470,78 @@ export async function dividendsPage(env) {
     reddit: rd.ok ? { ok: true, ...rd.value } : { ok: false, error: rd.error },
   };
 }
+
+// ---------- income calculator: one ticker's yield and dividend growth ----------
+
+// Yield, payout frequency and historical dividend growth for any ticker, from
+// its cash distributions (`divs`: [{t: epoch seconds, amount}], oldest first),
+// today's price and an optional Yahoo quote. Growth is the compound yearly
+// change in total dividends per calendar year, from the last full year back
+// up to 5 years (at least 3 years needed).
+export function dividendStats(divs, price, q = null, now = Date.now()) {
+  q = q || {};
+  price = pos(price) ?? pos(q.regularMarketPrice);
+  const list = (divs || []).filter((d) => d && n(d.t) != null && pos(d.amount));
+  const cut = now / 1000 - 365 * 86400;
+  const last12 = list.filter((d) => d.t >= cut);
+  const ttm = last12.reduce((s, d) => s + d.amount, 0) || null;
+  const byYear = {};
+  for (const d of list) {
+    const y = new Date(d.t * 1000).getUTCFullYear();
+    byYear[y] = (byYear[y] || 0) + d.amount;
+  }
+  const lastFull = new Date(now).getUTCFullYear() - 1;
+  let growth = null;
+  let growthYears = null;
+  if (byYear[lastFull]) {
+    for (let k = 5; k >= 3; k--) {
+      const base = byYear[lastFull - k];
+      // Skip a partial first year in the data (a stock that started paying mid year).
+      if (base && list[0].t * 1000 < Date.UTC(lastFull - k, 2, 1)) {
+        growth = ((byYear[lastFull] / base) ** (1 / k) - 1) * 100;
+        growthYears = k;
+        break;
+      }
+    }
+  }
+  const fwdRate = pos(q.dividendRate);
+  let yld = null;
+  let basis = null;
+  if (fwdRate && price) (yld = (fwdRate / price) * 100), (basis = 'forward');
+  else if (ttm && price) (yld = (ttm / price) * 100), (basis = 'trailing');
+  else if (pos(q.trailingAnnualDividendYield)) (yld = q.trailingAnnualDividendYield * 100), (basis = 'trailing');
+  return {
+    price: r2(price),
+    yield: yld == null ? 0 : r2(yld),
+    basis,
+    rate: r2(fwdRate ?? ttm),
+    ttm: r2(ttm),
+    payments: last12.length,
+    growth: r2(growth),
+    growthYears,
+    lastPaid: list.length ? day(list[list.length - 1].t) : null,
+    years: Object.fromEntries(Object.entries(byYear).map(([y, v]) => [y, r2(v)])),
+  };
+}
+
+export async function dividendCalc(env, t) {
+  return cached(env, `div:calc:v1:${t}`, 6 * 3600, async () => {
+    const [c, q] = await Promise.all([settle(fetchChart(t, '10y', '1mo')), settle(quotes(env, [t]))]);
+    const quote = q.ok ? q.value.get(t) : null;
+    if (!c.ok && !quote) throw new Error(`No data for ${t}`);
+    const meta = c.ok ? c.value.meta : {};
+    const price = pos(meta.price) ?? (c.ok && c.value.bars.length ? c.value.bars[c.value.bars.length - 1].c : null);
+    const ar = ARISTOCRATS.find((a) => a.t === t);
+    const etf = ETFS.find((e) => e.t === t);
+    return {
+      t,
+      name: (ar && ar.name) || (etf && etf.name) || (quote && quote.shortName) || meta.name || t,
+      aristocrat: !!ar,
+      raises: ar ? ar.years : null,
+      type: meta.instrumentType || null,
+      currency: meta.currency || null,
+      asOf: new Date().toISOString(),
+      ...dividendStats(c.ok ? c.value.dividends : [], price, quote),
+    };
+  });
+}
