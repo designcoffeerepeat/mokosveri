@@ -294,3 +294,26 @@ tr.click:hover td { background: var(--surface-2); }
 @media (hover: none) and (pointer: coarse), (max-width: 760px) {
   input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea { font-size: 16px !important; }
 }
+
+/* ETF tax status (public/etftax.js): ticker page card, dividend ETF table, calculator, watchlist */
+.tx-chip.tx-taxable { border-color: color-mix(in srgb, #3b82f6 45%, var(--line)); color: color-mix(in srgb, #3b82f6 70%, var(--ink)); }
+.tx-chip.tx-sheltered { border-color: color-mix(in srgb, var(--warn) 50%, var(--line)); color: color-mix(in srgb, var(--warn) 75%, var(--ink)); }
+.tx-chip.tx-roth { border-color: color-mix(in srgb, var(--up) 45%, var(--line)); color: color-mix(in srgb, var(--up) 75%, var(--ink)); }
+.tx-card { padding: 16px 18px; }
+.tx-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.tx-head .chip { font-size: 12px; }
+.tx-what { margin: 0 0 8px; line-height: 1.5; color: var(--ink-2); }
+.tx-acct { margin: 12px 0 8px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+.tx-acct .k { font-size: 12px; color: var(--muted); }
+.tx-acct-v { font-weight: 600; font-size: 16px; margin: 2px 0 4px; }
+.tx-acct p { margin: 0; color: var(--ink-2); line-height: 1.45; }
+.tx-note { margin: 8px 0 0; }
+.tx-col { white-space: nowrap; }
+.tx-col .chip { margin-left: 0 !important; }
+.tx-best { margin-top: 3px; }
+.tx-line { margin-top: 6px; }
+.tx-legend { margin-top: 10px; padding: 12px 16px; }
+.tx-legend summary { cursor: pointer; }
+.tx-legend dl { margin: 10px 0 0; display: grid; gap: 10px; }
+.tx-legend dt { margin-bottom: 2px; }
+.tx-legend dd { margin: 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; }

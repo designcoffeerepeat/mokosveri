@@ -1,6 +1,7 @@
 // One watchlist as a live, sortable, reorderable table card. Used by the
 // Watchlist page and by the accordion on the home page.
 import { esc, req } from './session.js';
+import { etfTax, KNOWN } from './etftax.js';
 import { COLUMNS, COLUMN_GROUPS, DEFAULT_COLUMNS, MAX_COLUMNS, cleanColumns, columnNeeds } from './wlcols.js';
 
 const fmtNum = (v, d = 2) => (v == null || !isFinite(v) ? 'n/a' : Number(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
@@ -162,6 +163,12 @@ function cellParts(k, r) {
       if (r.exDiv == null) return [''];
       const past = daysUntil(r.exDiv) < 0;
       return [monthDay(r.exDiv), past ? 'muted' : '', past ? 'Last ex-dividend date. The next one is not set yet.' : 'Next ex-dividend date'];
+    }
+    case 'tax': {
+      if (!r.etf && !KNOWN[r.ticker]) return [''];
+      const x = etfTax({ t: r.ticker, name: r.name });
+      if (x.type === 'unknown') return ['<span class="muted small">Check fund</span>'];
+      return [`<span class="chip tx-chip tx-${x.acct}">${esc(x.short)}</span>`, '', `${x.label}. Best account: ${x.best}. General information, not tax advice.`];
     }
     case 'divYield':
       return [r.divYield == null ? '' : `${fmtNum(r.divYield)}%`];

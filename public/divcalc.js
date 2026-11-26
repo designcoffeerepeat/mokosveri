@@ -1,6 +1,7 @@
 // Dividend income calculators on the dividends page: one holding (a dividend
 // stock or income ETF from the list, or any ticker typed in) and a mix of
 // several holdings pooled together. Pure helpers are exported for the offline tests.
+import { etfTax, taxLine } from './etftax.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const usd = (v, d = 0) => (v == null || !isFinite(v) ? 'n/a' : (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
 const pc = (v, d = 2) => (v == null || !isFinite(v) ? 'n/a' : `${Number(v).toFixed(d)}%`);
@@ -320,7 +321,8 @@ export function mountCalculators(el, rows, api, etfs = []) {
     else if (cur.cc) warn = '<div class="notice small">Covered call fund: much of the payout is option premium, so it moves with market volatility, can shrink, and rarely grows like a dividend. Consider a dividend growth of 0% or less.</div>';
     else if (cur.yield >= 8) warn = `<div class="notice small">A ${pc(cur.yield, 1)} yield is very high. It often means the market expects a cut, or the payout includes option premium or return of capital. Check that it is covered before counting on it.</div>`;
     else if (cur.growth != null && cur.growth < 0) warn = '<div class="notice small">This payout has shrunk over the period, so the default projection has it shrinking too.</div>';
-    box.innerHTML = `<div>${bits.join(' · ')}</div>${warn}`;
+    const tax = cur.category || /ETF/i.test(cur.type || '') ? taxLine(etfTax({ t: cur.t, name: cur.name, sector: cur.sector })) : '';
+    box.innerHTML = `<div>${bits.join(' · ')}</div>${tax}${warn}`;
   };
 
   // T-bill funds: the price field is set to 0% (their price barely moves) and
@@ -342,7 +344,7 @@ export function mountCalculators(el, rows, api, etfs = []) {
     growthTouched = false;
     const r = fromList ? rowOf(t) : null;
     const tags = (x) => ({ cc: isCoveredCall(x), tbill: isTbill(x, t), flat: isFlat(x, t), category: x && x.etf ? catOf(x) : null });
-    cur = r ? { t, name: r.name, yield: r.yield, raises: r.years, price: r.price, er: r.er, ...tags(r), basis: r.etf ? 'trailing' : 'forward', loading: true } : null;
+    cur = r ? { t, name: r.name, yield: r.yield, raises: r.years, price: r.price, er: r.er, sector: r.sector, ...tags(r), basis: r.etf ? 'trailing' : 'forward', loading: true } : null;
     setPriceDefault(isFlat(r, t));
     if (cur) {
       setGrowthDefault();
@@ -356,7 +358,7 @@ export function mountCalculators(el, rows, api, etfs = []) {
       const d = await getInfo(t);
       if ((s.mode === 'list' ? s.pick : s.custom) !== t) return;
       // Keep the page's live yield for listed tickers so the sections agree.
-      cur = { ...d, yield: r && r.yield != null ? r.yield : d.yield, basis: r ? cur.basis : d.basis, er: r ? r.er : null, ...tags(r), loading: false };
+      cur = { ...d, yield: r && r.yield != null ? r.yield : d.yield, basis: r ? cur.basis : d.basis, er: r ? r.er : null, sector: r ? r.sector : null, ...tags(r), loading: false };
       if (cur.flat) cur.growth = null;
     } catch (e) {
       if ((s.mode === 'list' ? s.pick : s.custom) !== t) return;

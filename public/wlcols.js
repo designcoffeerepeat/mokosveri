@@ -30,6 +30,7 @@ export const COLUMNS = [
   { key: 'eps', label: 'EPS', group: 'Earnings and dividends', num: true, need: 'stats', help: 'Earnings per share, trailing 12 months' },
   { key: 'fwdEps', label: 'Fwd EPS', group: 'Earnings and dividends', num: true, need: 'stats', help: 'Expected earnings per share over the next year' },
   { key: 'divYield', label: 'Div yield', group: 'Earnings and dividends', num: true, need: 'stats', help: 'Dividend yield' },
+  { key: 'tax', label: 'ETF tax', group: 'Earnings and dividends', num: false, sortable: false, need: 'stats', help: 'For ETFs: how the payout is taxed and the account type it usually suits best. Blank for stocks. General information, not tax advice' },
   { key: 'exDiv', label: 'Ex-div', group: 'Earnings and dividends', num: true, asc: true, need: 'stats', help: 'Ex-dividend date. Buy before it to get the next payment' },
 
   { key: 'volume', label: 'Volume', group: 'Trading', num: true, need: 'stats', help: 'Shares traded today' },
