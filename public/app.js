@@ -1,5 +1,6 @@
 // Mokosveri front end. Vanilla JS, hash routing: #/ and #/t/TICKER
 import { mountWatchButton } from './session.js';
+import { etfTax, taxCardHtml } from './etftax.js';
 // Coins with long-term power law and rainbow models (kept in step with public/cryptolong.js).
 const CRYPTO_LONG = /^(BTC|ETH|SOL|XRP|BNB|DOGE|ADA|LTC)-USD$/;
 // AI lenses read company filings, so they show for stocks only (not funds, indices or coins).
@@ -543,6 +544,8 @@ function fillAnalysis(a) {
       ${stat('Analyst target', an && an.targetMean ? fmtNum(an.targetMean) : 'n/a', an && an.targetMean && tc.price ? `${fmtPct((an.targetMean / tc.price - 1) * 100)} upside · ${an.numAnalysts || '?'} analysts` : '')}`}
       ${stat('Trend', tc.sma200 ? (tc.price > tc.sma200 ? 'Above 200d' : 'Below 200d') : 'n/a', tc.sma50 ? `50d ${fmtNum(tc.sma50)} · 200d ${fmtNum(tc.sma200)}` : '')}
     </div>
+
+    ${a.type === 'ETF' ? `<h2 class="section">Taxes and best account</h2>${taxCardHtml(etfTax({ t: a.ticker, name: a.name, category: a.profile && a.profile.fundCategory }))}` : ''}
 
     ${holdHtml}
 

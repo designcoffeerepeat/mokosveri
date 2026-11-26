@@ -10,6 +10,7 @@ const FIELDS = [
   'epsTrailingTwelveMonths,epsForward,earningsTimestamp,earningsTimestampStart,earningsTimestampEnd,isEarningsDateEstimate',
   'dividendRate,dividendYield,trailingAnnualDividendYield,exDividendDate',
   'regularMarketVolume,averageDailyVolume3Month,fiftyTwoWeekHigh,fiftyTwoWeekLow',
+  'quoteType,longName,shortName',
 ].join(',');
 
 const num = (v) => (typeof v === 'number' && isFinite(v) ? v : v && typeof v === 'object' && typeof v.raw === 'number' ? v.raw : null);
@@ -66,6 +67,7 @@ export function statsFrom(q, now = Date.now()) {
     relVolume: vol != null && avg ? vol / avg : null,
     hi52: pos(q.fiftyTwoWeekHigh),
     lo52: pos(q.fiftyTwoWeekLow),
+    etf: q.quoteType ? q.quoteType === 'ETF' : null,
   };
 }
 

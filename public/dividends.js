@@ -2,6 +2,7 @@
 // dividend raises, filtered to the higher yielders and ranked by how they have
 // performed, plus what r/dividends is talking about. Pure helpers are exported
 // for the offline tests.
+import { etfTax, taxCell, taxLegendHtml } from './etftax.js';
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const pct = (v, d = 1, sign = true) => (v == null ? '<span class="muted">n/a</span>' : `${sign && v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
 const tone = (v) => (v == null ? '' : v > 0 ? 'up' : v < 0 ? 'down' : '');
@@ -110,6 +111,7 @@ export function tableHtml(rows, st) {
 
 const ETF_COLS = [
   ['t', 'Fund', ''],
+  ['tax', 'Taxes', 'tx-col'],
   ['er', 'Fee', 'num'],
   ['yield', 'Yield', 'num'],
   ['ytd', 'YTD', 'num'],
@@ -129,6 +131,7 @@ export function etfTableHtml(etfs, st) {
       .map(
         (r) => `<tr>
         <td><a href="#/t/${encodeURIComponent(r.t)}" class="mono"><b>${esc(r.t)}</b></a> <span class="dv-nm">${esc(r.name)}</span><div class="small muted">${esc(r.sector)} ${flagChips(r)}</div></td>
+        <td class="tx-col">${taxCell(etfTax(r))}</td>
         <td class="num mono small">${r.er != null ? r.er.toFixed(2) + '%' : ''}</td>
         <td class="num mono"><b>${pct(r.yield, 2, false)}</b></td>
         <td class="num mono ${tone(r.ytd)}">${pct(r.ytd)}</td>
@@ -138,7 +141,8 @@ export function etfTableHtml(etfs, st) {
       </tr>`
       )
       .join('')}
-  </tbody></table></div>`;
+  </tbody></table></div>
+  ${taxLegendHtml(rows.map(etfTax))}`;
 }
 
 const tk = (t, byT) => {
@@ -266,7 +270,7 @@ export async function renderDividends(app, api) {
 
       <h2 class="section">Dividend ETFs ${st.min ? `yielding ${st.min}% or more` : ''}</h2>
       ${etfTableHtml(d.etfs, st)}
-      <p class="small muted">Same yield filter and ranking as the stocks above. Yield is the last 12 months of distributions divided by today's price. Fee is the fund's yearly expense ratio, already taken out of its returns. Covered call funds pay more now by selling away part of the upside, so their payouts can shrink and rarely grow.</p>`;
+      <p class="small muted">Same yield filter and ranking as the stocks above. Yield is the last 12 months of distributions divided by today's price. Fee is the fund's yearly expense ratio, already taken out of its returns. Covered call funds pay more now by selling away part of the upside, so their payouts can shrink and rarely grow. Taxes shows how each fund's payout is taxed and the account type it usually suits best; open the guide under the table for what each label means. General information, not tax advice.</p>`;
 
     lists.querySelectorAll('.ev-seg').forEach((g) =>
       g.addEventListener('click', (ev) => {
