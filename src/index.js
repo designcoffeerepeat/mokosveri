@@ -16,7 +16,7 @@ import { buildEvents } from './events.js';
 import { earningsMonth, earningsDay, parseWatch } from './earningscal.js';
 import { handleLens, LENS_IDS } from './lenses.js';
 import { rateLimit } from './auth.js';
-import { dividendsPage, dividendCalc } from './dividends.js';
+import { dividendsPage, dividendCalc, incomeFunds } from './dividends.js';
 import { buildBreakout } from './breakout.js';
 import { radarPage } from './radar.js';
 import { buildTrades, TRADES_KEY } from './trades.js';
@@ -148,6 +148,12 @@ async function handleApi(request, env, ctx, url) {
 
   // Congress trades for the home page table, in their own request so the
   // paging gets a fresh fetch budget. Cached for an hour inside congressAll.
+  // Income calculator: the extra income ETFs (bonds, T-bills, covered call...).
+  if (path === '/api/dividends/funds') {
+    const r = await settle(incomeFunds(env));
+    return json(r.ok ? r.value : { error: r.error }, r.ok ? 200 : 502);
+  }
+
   // Income calculator: yield, payout count and dividend growth for one ticker.
   const dcm = path.match(/^\/api\/dividends\/calc\/([^/]+)$/);
   if (dcm) {

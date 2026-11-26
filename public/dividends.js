@@ -121,7 +121,7 @@ const ETF_COLS = [
 // Dividend ETFs: same minimum yield and ranking as the stocks, every strategy.
 export function etfTableHtml(etfs, st) {
   const sortKey = st.sort === 'years' ? 'yield' : st.sort;
-  const rows = pickRows((etfs || []).filter((r) => !r.calcOnly), { min: st.min, sort: sortKey, asc: st.asc, sector: 'all' });
+  const rows = pickRows(etfs || [], { min: st.min, sort: sortKey, asc: st.asc, sector: 'all' });
   if (!rows.length) return '<div class="card dv-empty">No dividend ETFs match this minimum yield right now.</div>';
   const th = ETF_COLS.map(([k, l, c]) => `<th class="${c}">${k === sortKey ? `<b>${esc(l)}</b>` : esc(l)}</th>`).join('');
   return `<div class="card tbl-wrap"><table class="dv-tbl dv-etf"><thead><tr>${th}</tr></thead><tbody>
@@ -242,8 +242,11 @@ export async function renderDividends(app, api) {
     e.preventDefault();
     app.querySelector('#dvCalcH').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-  import('/divcalc.js')
-    .then((m) => m.mountCalculators(app.querySelector('#dvCalc'), d.rows, api, d.etfs || []))
+  // The calculator also offers the wider income fund list; if that request
+  // fails it still works with the stocks and ETFs above.
+  app.querySelector('#dvCalc').innerHTML = '<div class="loading"><div class="spinner"></div>Loading income funds…</div>';
+  Promise.all([import('/divcalc.js'), api('/api/dividends/funds').then((x) => x.funds || [], () => [])])
+    .then(([m, more]) => m.mountCalculators(app.querySelector('#dvCalc'), d.rows, api, [...(d.etfs || []), ...more]))
     .catch((e) => (app.querySelector('#dvCalc').innerHTML = `<div class="notice small">The calculator could not load (${esc(e.message)}).</div>`));
 
   const paint = () => {

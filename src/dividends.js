@@ -113,10 +113,38 @@ export const ETFS = [
   ['JEPI', 'JPMorgan Equity Premium Income', 'Covered call income', 0.35],
   ['JEPQ', 'JPMorgan Nasdaq Equity Premium Income', 'Covered call income', 0.35],
   ['DIVO', 'Amplify CWP Enhanced Dividend Income', 'Covered call income', 0.56],
-  // Treasury bill fund: in the income calculator as a cash benchmark, kept out
-  // of the dividend ETF table because its payout follows short term rates.
+].map(([t, name, sector, er]) => ({ t, name, sector, er, etf: true, years: null }));
+
+// More income ETFs for the dividend income calculator only (not the ETF
+// table): extra dividend funds, covered call, real estate, preferreds, bonds
+// and Treasury bills. Served by /api/dividends/funds, a separate request so
+// the main page keeps its subrequest budget. Expense ratios are approximate;
+// check them on the issuer's page.
+export const INCOME_FUNDS = [
+  ['DGRW', 'WisdomTree US Quality Dividend Growth', 'Dividend growth', 0.28],
+  ['DHS', 'WisdomTree US High Dividend', 'High yield', 0.38],
+  ['SPHD', 'Invesco S&P 500 High Dividend Low Volatility', 'High yield', 0.3],
+  ['VYMI', 'Vanguard International High Dividend Yield', 'International', 0.17],
+  ['IDV', 'iShares International Select Dividend', 'International', 0.49],
+  ['QYLD', 'Global X Nasdaq 100 Covered Call', 'Covered call income', 0.6],
+  ['XYLD', 'Global X S&P 500 Covered Call', 'Covered call income', 0.6],
+  ['SPYI', 'NEOS S&P 500 High Income', 'Covered call income', 0.68],
+  ['QQQI', 'NEOS Nasdaq 100 High Income', 'Covered call income', 0.68],
+  ['VNQ', 'Vanguard Real Estate', 'Real estate', 0.13],
+  ['PFF', 'iShares Preferred and Income Securities', 'Preferreds', 0.45],
+  ['PGX', 'Invesco Preferred', 'Preferreds', 0.5],
+  ['BND', 'Vanguard Total Bond Market', 'Bonds', 0.03],
+  ['AGG', 'iShares Core US Aggregate Bond', 'Bonds', 0.03],
+  ['VCIT', 'Vanguard Intermediate-Term Corporate Bond', 'Bonds', 0.03],
+  ['TLT', 'iShares 20+ Year Treasury Bond', 'Bonds', 0.15],
+  ['HYG', 'iShares iBoxx High Yield Corporate Bond', 'Bonds', 0.49],
+  ['JNK', 'SPDR Bloomberg High Yield Bond', 'Bonds', 0.4],
   ['SGOV', 'iShares 0-3 Month Treasury Bond', 'Treasury bills', 0.09],
-].map(([t, name, sector, er]) => ({ t, name, sector, er, etf: true, years: null, calcOnly: sector === 'Treasury bills' }));
+  ['BIL', 'SPDR Bloomberg 1-3 Month T-Bill', 'Treasury bills', 0.14],
+  ['USFR', 'WisdomTree Floating Rate Treasury', 'Treasury bills', 0.15],
+  ['TFLO', 'iShares Treasury Floating Rate Bond', 'Treasury bills', 0.15],
+  ['SHV', 'iShares Short Treasury Bond', 'Treasury bills', 0.15],
+].map(([t, name, sector, er]) => ({ t, name, sector, er, etf: true, years: null }));
 
 // Third party research notes shown on the page, with their dates.
 export const RESEARCH = {
@@ -397,7 +425,6 @@ export function rowFor(a, q, pts, now = Date.now(), dist = null) {
     years: a.years,
     etf: !!a.etf,
     er: a.er ?? null,
-    calcOnly: !!a.calcOnly,
     price: r2(price),
     change1d: r2(q.regularMarketChangePercent),
     yield: r2(yld),
@@ -528,6 +555,32 @@ export function dividendStats(divs, price, q = null, now = Date.now()) {
   };
 }
 
+// Rows for INCOME_FUNDS: one batched quote plus one chart call per fund for
+// its distributions (trailing 12 month yield), cached 3 hours.
+export async function incomeFunds(env) {
+  return cached(env, 'div:funds:v1', 3 * 3600, async () => {
+    const [q, h] = await Promise.all([
+      settle(quotes(env, INCOME_FUNDS.map((e) => e.t))),
+      settle(
+        (async () => {
+          const out = new Map();
+          await pool(INCOME_FUNDS, 6, async (e) => {
+            const r = await settle(fetchChart(e.t, '5y', '1wk'));
+            if (r.ok) out.set(e.t, { pts: r.value.bars.map((b) => ({ t: b.t * 1000, c: b.c })), dist: r.value.dividends });
+          });
+          return out;
+        })()
+      ),
+    ]);
+    const qm = q.ok ? q.value : new Map();
+    const hm = h.ok ? h.value : new Map();
+    if (!qm.size && !hm.size) throw new Error(q.error || h.error || 'No market data');
+    const now = Date.now();
+    const funds = INCOME_FUNDS.map((e) => rowFor(e, qm.get(e.t), hm.get(e.t) && hm.get(e.t).pts, now, hm.get(e.t) && hm.get(e.t).dist)).map(({ spark, ...r }) => r);
+    return { asOf: new Date(now).toISOString(), funds };
+  });
+}
+
 export async function dividendCalc(env, t) {
   return cached(env, `div:calc:v1:${t}`, 6 * 3600, async () => {
     const [c, q] = await Promise.all([settle(fetchChart(t, '10y', '1mo')), settle(quotes(env, [t]))]);
@@ -536,7 +589,7 @@ export async function dividendCalc(env, t) {
     const meta = c.ok ? c.value.meta : {};
     const price = pos(meta.price) ?? (c.ok && c.value.bars.length ? c.value.bars[c.value.bars.length - 1].c : null);
     const ar = ARISTOCRATS.find((a) => a.t === t);
-    const etf = ETFS.find((e) => e.t === t);
+    const etf = ETFS.find((e) => e.t === t) || INCOME_FUNDS.find((e) => e.t === t);
     return {
       t,
       name: (ar && ar.name) || (etf && etf.name) || (quote && quote.shortName) || meta.name || t,
