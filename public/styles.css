@@ -287,3 +287,10 @@ tr.click:hover td { background: var(--surface-2); }
 .snav-sheet .snav-top button { color: var(--ink-2); font-size: 14px; }
 @media (max-width: 760px) { .foot { padding-bottom: 72px; } }
 @media (min-width: 761px) { .snav-btn, .snav-sheet, .snav-scrim { display: none !important; } }
+
+/* iPhone and iPad Safari zoom the page in when you tap a text box or menu whose
+   text is under 16px, and the page then stays zoomed and scrolls sideways.
+   Touch screens get 16px form text so tapping a field never zooms. */
+@media (hover: none) and (pointer: coarse), (max-width: 760px) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']), select, textarea { font-size: 16px !important; }
+}
