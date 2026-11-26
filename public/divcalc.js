@@ -83,14 +83,21 @@ export function byYield(rows) {
 }
 
 // Picker options: the first `shown` aristocrats, then every dividend ETF.
-export function optionsHtml(list, shown, selected, funds = []) {
+// Picker options: the first `shown` aristocrats, then every dividend ETF,
+// then Treasury bill funds.
+export function optionsHtml(list, shown, selected, funds = [], cash = []) {
   const opt = (r, i) => `<option value="${esc(r.t)}"${r.t === selected ? ' selected' : ''}>${i + 1}. ${esc(r.t)}  ${esc(r.name)}  ${r.yield.toFixed(2)}%</option>`;
   const a = list.slice(0, shown).map(opt).join('');
-  if (!funds.length) return a;
-  return `<optgroup label="Aristocrats, highest yield first">${a}</optgroup><optgroup label="Dividend ETFs, highest yield first">${funds.map(opt).join('')}</optgroup>`;
+  if (!funds.length && !cash.length) return a;
+  return `<optgroup label="Aristocrats, highest yield first">${a}</optgroup>${funds.length ? `<optgroup label="Dividend ETFs, highest yield first">${funds.map(opt).join('')}</optgroup>` : ''}${cash.length ? `<optgroup label="Treasury bill ETFs">${cash.map(opt).join('')}</optgroup>` : ''}`;
 }
 
 export const isCoveredCall = (r) => !!r && r.sector === 'Covered call income';
+// Treasury bill funds pay whatever short term rates are, so their payout
+// history (near zero in 2020 and 2021, then 5%) says nothing about growth.
+// They are projected flat: 0% payout growth and a steady price.
+export const TBILLS = new Set(['SGOV', 'BIL', 'BILS', 'USFR', 'TFLO', 'SHV', 'CLIP', 'TBIL', 'XBIL', 'GBIL', 'BOXX']);
+export const isTbill = (r, t = r && r.t) => (!!r && r.sector === 'Treasury bills') || TBILLS.has(String(t || '').toUpperCase());
 
 // Yearly income bars. One series, so no legend; the year table is the table view.
 export function barsHtml(rows) {
@@ -152,8 +159,9 @@ const dripBox = (id, on) => `<label class="dc-check"><input type="checkbox" id="
 
 export function mountCalculators(el, rows, api, etfs = []) {
   const list = byYield(rows);
-  const funds = byYield(etfs || []);
-  const all = [...list, ...funds];
+  const funds = byYield((etfs || []).filter((r) => !isTbill(r)));
+  const cash = byYield((etfs || []).filter((r) => isTbill(r)));
+  const all = [...list, ...funds, ...cash];
   const saved = load();
   const s = {
     pick: all.some((r) => r.t === saved.pick) ? saved.pick : list[0] && list[0].t,
@@ -230,7 +238,7 @@ export function mountCalculators(el, rows, api, etfs = []) {
       </div>
       <div id="dcPOut"></div>
     </div>
-    <p class="small muted">Projections, not promises. They assume the yield you see today, steady dividend growth at the rate shown, and no taxes or fees. Dividend growth defaults to each company's or fund's change in yearly payouts over the last 5 full years (held between ${GROWTH_MIN}% and ${GROWTH_MAX}%). Price growth defaults to the dividend growth rate, which keeps the yield on new purchases steady; DRIP buys more shares at that price each year end.</p>`;
+    <p class="small muted">Projections, not promises. They assume the yield you see today, steady dividend growth at the rate shown, and no taxes or fees. Dividend growth defaults to each company's or fund's change in yearly payouts over the last 5 full years (held between ${GROWTH_MIN}% and ${GROWTH_MAX}%). Price growth defaults to the dividend growth rate, which keeps the yield on new purchases steady; DRIP buys more shares at that price each year end. Treasury bill funds are projected flat (0% payout and price growth) because their payout follows interest rates.</p>`;
 
   const $ = (sel) => el.querySelector(sel);
 
@@ -239,7 +247,7 @@ export function mountCalculators(el, rows, api, etfs = []) {
   let growthTouched = false;
 
   const paintPicker = () => {
-    $('#dcPick').innerHTML = optionsHtml(list, s.shown, s.pick, funds);
+    $('#dcPick').innerHTML = optionsHtml(list, s.shown, s.pick, funds, cash);
     const more = $('#dcMore');
     const left = list.length - s.shown;
     more.hidden = left <= 0;
@@ -268,17 +276,28 @@ export function mountCalculators(el, rows, api, etfs = []) {
     if (cur.payments) bits.push(`${cur.payments} payment${cur.payments === 1 ? '' : 's'} a year`);
     if (cur.raises) bits.push(`${cur.raises} years of raises`);
     if (cur.er != null) bits.push(`fee ${pc(cur.er)} a year`);
-    if (cur.growth != null) bits.push(`dividends ${cur.growth >= 0 ? 'grew' : 'fell'} ${pc(Math.abs(cur.growth), 1)} a year over ${cur.growthYears} years`);
+    if (cur.tbill) bits.push('payout follows T-bill rates');
+    else if (cur.growth != null) bits.push(`dividends ${cur.growth >= 0 ? 'grew' : 'fell'} ${pc(Math.abs(cur.growth), 1)} a year over ${cur.growthYears} years`);
     else if (cur.loading) bits.push('<span class="muted">loading dividend history…</span>');
     let warn = '';
-    if (cur.cc) warn = '<div class="notice small">Covered call fund: much of the payout is option premium, so it moves with market volatility, can shrink, and rarely grows like a dividend. Consider a dividend growth of 0% or less.</div>';
+    if (cur.tbill) warn = '<div class="notice small">Treasury bill fund: the payout follows short term interest rates, so income falls if the Fed cuts and rises if it hikes. The price stays close to flat, so it is projected with 0% growth on both. Interest is exempt from state income tax.</div>';
+    else if (cur.cc) warn = '<div class="notice small">Covered call fund: much of the payout is option premium, so it moves with market volatility, can shrink, and rarely grows like a dividend. Consider a dividend growth of 0% or less.</div>';
     else if (cur.yield >= 8) warn = `<div class="notice small">A ${pc(cur.yield, 1)} yield is very high. It often means the market expects a cut, or the payout includes option premium or return of capital. Check that it is covered before counting on it.</div>`;
     else if (cur.growth != null && cur.growth < 0) warn = '<div class="notice small">This payout has shrunk over the period, so the default projection has it shrinking too.</div>';
     box.innerHTML = `<div>${bits.join(' · ')}</div>${warn}`;
   };
 
+  // T-bill funds: the price field is set to 0% (their price barely moves) and
+  // cleared again when another pick comes along, unless the reader typed in it.
+  let priceAuto = false;
+  const setPriceDefault = (tbill) => {
+    const f = $('#dcPrice');
+    if (tbill && (f.value.trim() === '' || priceAuto)) (f.value = '0'), (priceAuto = true);
+    else if (!tbill && priceAuto) (f.value = ''), (priceAuto = false);
+  };
   const setGrowthDefault = () => {
     if (growthTouched || !cur) return;
+    if (cur.tbill) return void ($('#dcGrowth').value = '0');
     const g = clampGrowth(cur.growth);
     $('#dcGrowth').value = g == null ? (cur.loading ? '' : '0') : String(g);
   };
@@ -286,7 +305,8 @@ export function mountCalculators(el, rows, api, etfs = []) {
   const choose = async (t, fromList) => {
     growthTouched = false;
     const r = fromList ? rowOf(t) : null;
-    cur = r ? { t, name: r.name, yield: r.yield, raises: r.years, price: r.price, er: r.er, cc: isCoveredCall(r), basis: r.etf ? 'trailing' : 'forward', loading: true } : null;
+    cur = r ? { t, name: r.name, yield: r.yield, raises: r.years, price: r.price, er: r.er, cc: isCoveredCall(r), tbill: isTbill(r), basis: r.etf ? 'trailing' : 'forward', loading: true } : null;
+    setPriceDefault(isTbill(r, t));
     if (cur) {
       setGrowthDefault();
       paintInfo();
@@ -299,7 +319,8 @@ export function mountCalculators(el, rows, api, etfs = []) {
       const d = await getInfo(t);
       if ((s.mode === 'list' ? s.pick : s.custom) !== t) return;
       // Keep the page's live yield for listed tickers so the sections agree.
-      cur = { ...d, yield: r && r.yield != null ? r.yield : d.yield, basis: r ? cur.basis : d.basis, er: r ? r.er : null, cc: isCoveredCall(r), loading: false };
+      cur = { ...d, yield: r && r.yield != null ? r.yield : d.yield, basis: r ? cur.basis : d.basis, er: r ? r.er : null, cc: isCoveredCall(r), tbill: isTbill(r, t), loading: false };
+      if (cur.tbill) cur.growth = null;
     } catch (e) {
       if ((s.mode === 'list' ? s.pick : s.custom) !== t) return;
       if (!cur) {
@@ -361,7 +382,7 @@ export function mountCalculators(el, rows, api, etfs = []) {
     paintOne();
   });
   $('#dcGrowth').addEventListener('input', () => ((growthTouched = true), paintOne()));
-  $('#dcPrice').addEventListener('input', paintOne);
+  $('#dcPrice').addEventListener('input', () => ((priceAuto = false), paintOne()));
   $('#dcDrip').addEventListener('change', (e) => {
     s.drip = e.target.checked;
     persist();
@@ -384,19 +405,21 @@ export function mountCalculators(el, rows, api, etfs = []) {
         .join('');
     const a = list.filter(match);
     const f = funds.filter(match);
+    const c = cash.filter((r) => match(r) || (q && 'treasury bills cash tbill t-bill'.includes(q)));
     $('#dcList').innerHTML =
       (a.length ? `<div class="dc-grp small muted">Aristocrats</div>${opts(a)}` : '') +
       (f.length ? `<div class="dc-grp small muted">Dividend ETFs</div>${opts(f)}` : '') +
-      (a.length || f.length ? '' : '<p class="small muted">Nothing matches that.</p>');
+      (c.length ? `<div class="dc-grp small muted">Treasury bill ETFs</div>${opts(c)}` : '') +
+      (a.length || f.length || c.length ? '' : '<p class="small muted">Nothing matches that.</p>');
   };
 
-  const growthFor = (t) => (s.pGrowth === 'fixed' ? s.pFixed : info[t] ? clampGrowth(info[t].growth) ?? 0 : null);
+  const growthFor = (t) => (isTbill(rowOf(t), t) ? 0 : s.pGrowth === 'fixed' ? s.pFixed : info[t] ? clampGrowth(info[t].growth) ?? 0 : null);
 
   const paintPort = () => {
     const out = $('#dcPOut');
     const picks = Object.keys(s.port).filter((t) => rowOf(t));
     if (!picks.length) return void (out.innerHTML = '<div class="dc-empty small muted">Tick a few aristocrats or ETFs above to build a mix.</div>');
-    const waiting = s.pGrowth === 'own' && picks.some((t) => !info[t]);
+    const waiting = s.pGrowth === 'own' && picks.some((t) => !info[t] && !isTbill(rowOf(t), t));
     const holdings = picks.map((t) => ({ t, amount: s.port[t], yield: rowOf(t).yield, growth: growthFor(t) ?? 0 }));
     const p = portfolio(holdings, { years: s.pYears, drip: s.pDrip });
     const byT = Object.fromEntries(p.items.map((h) => [h.t, h]));

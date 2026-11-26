@@ -121,7 +121,7 @@ const ETF_COLS = [
 // Dividend ETFs: same minimum yield and ranking as the stocks, every strategy.
 export function etfTableHtml(etfs, st) {
   const sortKey = st.sort === 'years' ? 'yield' : st.sort;
-  const rows = pickRows(etfs || [], { min: st.min, sort: sortKey, asc: st.asc, sector: 'all' });
+  const rows = pickRows((etfs || []).filter((r) => !r.calcOnly), { min: st.min, sort: sortKey, asc: st.asc, sector: 'all' });
   if (!rows.length) return '<div class="card dv-empty">No dividend ETFs match this minimum yield right now.</div>';
   const th = ETF_COLS.map(([k, l, c]) => `<th class="${c}">${k === sortKey ? `<b>${esc(l)}</b>` : esc(l)}</th>`).join('');
   return `<div class="card tbl-wrap"><table class="dv-tbl dv-etf"><thead><tr>${th}</tr></thead><tbody>

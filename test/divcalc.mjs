@@ -2,7 +2,7 @@
 // combined mix, and the per ticker yield and growth lookup. Run: node test/divcalc.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { project, portfolio, byYield, optionsHtml, resultHtml, clampGrowth, isCoveredCall, PAGE } from '../public/divcalc.js';
+import { project, portfolio, byYield, optionsHtml, resultHtml, clampGrowth, isCoveredCall, isTbill, PAGE } from '../public/divcalc.js';
 import { ETFS } from '../src/dividends.js';
 import { dividendStats, dividendCalc } from '../src/dividends.js';
 
@@ -78,6 +78,16 @@ assert.ok(withFunds.indexOf('Dividend ETFs') > withFunds.indexOf('T19'), 'ETF gr
 for (const t of ['SCHD', 'VYM', 'DGRO', 'NOBL', 'JEPI', 'HDV', 'VIG', 'SPYD']) assert.ok(withFunds.includes(`value="${t}"`), `${t} in the picker`);
 assert.ok(withFunds.includes('value="SCHD" selected'));
 assert.ok(isCoveredCall(ETFS.find((e) => e.t === 'JEPI')));
+// SGOV sits in its own Treasury bill group and is projected flat.
+const sgov = ETFS.find((e) => e.t === 'SGOV');
+assert.ok(sgov && sgov.calcOnly && isTbill(sgov));
+assert.ok(isTbill(null, 'bil'), 'typed T-bill tickers are recognized');
+assert.ok(!isTbill(ETFS.find((e) => e.t === 'SCHD')));
+const withCash = optionsHtml(byYield(many), PAGE, 'SGOV', [], [{ ...sgov, yield: 4.2 }]);
+assert.ok(withCash.includes('Treasury bill ETFs') && withCash.includes('value="SGOV" selected'));
+const flat = project({ amount: 10000, yieldPct: 4.2, years: 5, growthPct: 0, priceGrowthPct: 0, drip: false });
+close(flat.total, 2100);
+close(flat.endValue, 10000);
 assert.ok(!isCoveredCall(ETFS.find((e) => e.t === 'SCHD')));
 assert.ok(resultHtml(project({ amount: 1000, yieldPct: 4, years: 5 }), { years: 5, drip: false }).includes('Total over 5 years'));
 assert.equal(clampGrowth(40), 15);
