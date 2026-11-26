@@ -2,7 +2,8 @@
 // combined mix, and the per ticker yield and growth lookup. Run: node test/divcalc.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { project, portfolio, byYield, optionsHtml, resultHtml, clampGrowth, PAGE } from '../public/divcalc.js';
+import { project, portfolio, byYield, optionsHtml, resultHtml, clampGrowth, isCoveredCall, PAGE } from '../public/divcalc.js';
+import { ETFS } from '../src/dividends.js';
 import { dividendStats, dividendCalc } from '../src/dividends.js';
 
 for (const f of ['public/divcalc.js', 'public/dividends.css', 'src/dividends.js']) assert.ok(!readFileSync(new URL('../' + f, import.meta.url), 'utf8').includes('—'), `${f} has no em dash`);
@@ -69,6 +70,15 @@ assert.deepEqual(byYield(rows).map((r) => r.t), ['W', 'Y', 'X'], 'highest yield 
 const many = Array.from({ length: 69 }, (_, i) => ({ t: 'T' + i, name: 'N' + i, yield: 10 - i / 10 }));
 assert.equal((optionsHtml(byYield(many), PAGE, 'T3').match(/<option/g) || []).length, 20, 'first page is 20');
 assert.ok(optionsHtml(byYield(many), PAGE, 'T3').includes('value="T3" selected'));
+// ETFs follow the aristocrats in their own group, all of them shown.
+const fundRows = byYield(ETFS.map((e, i) => ({ ...e, yield: 1 + i / 3 })));
+const withFunds = optionsHtml(byYield(many), PAGE, 'SCHD', fundRows);
+assert.equal((withFunds.match(/<option/g) || []).length, 20 + ETFS.length);
+assert.ok(withFunds.indexOf('Dividend ETFs') > withFunds.indexOf('T19'), 'ETF group comes after the aristocrats');
+for (const t of ['SCHD', 'VYM', 'DGRO', 'NOBL', 'JEPI', 'HDV', 'VIG', 'SPYD']) assert.ok(withFunds.includes(`value="${t}"`), `${t} in the picker`);
+assert.ok(withFunds.includes('value="SCHD" selected'));
+assert.ok(isCoveredCall(ETFS.find((e) => e.t === 'JEPI')));
+assert.ok(!isCoveredCall(ETFS.find((e) => e.t === 'SCHD')));
 assert.ok(resultHtml(project({ amount: 1000, yieldPct: 4, years: 5 }), { years: 5, drip: false }).includes('Total over 5 years'));
 assert.equal(clampGrowth(40), 15);
 assert.equal(clampGrowth(-30), -10);
