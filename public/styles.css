@@ -271,3 +271,19 @@ tr.click:hover td { background: var(--surface-2); }
 .profile-officers { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); columns: 2; column-gap: 28px; }
 .profile-officers li { margin: 0 0 6px; break-inside: avoid; }
 @media (max-width: 600px) { .profile { padding: 18px; } .profile-officers { columns: 1; } }
+
+/* ---------- mobile floating section menu (sectionnav.js) ---------- */
+.snav-btn { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 40; display: inline-flex; align-items: center; gap: 8px; height: 46px; padding: 0 16px 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--ink); color: var(--bg); font: 600 13px var(--sans); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22); cursor: pointer; }
+.snav-btn[hidden], .snav-sheet[hidden], .snav-scrim[hidden] { display: none; }
+.snav-btn:focus-visible { outline: 2px solid var(--up); outline-offset: 2px; }
+.snav-scrim { position: fixed; inset: 0; z-index: 41; background: rgba(0, 0, 0, 0.28); }
+.snav-sheet { position: fixed; right: 16px; left: 16px; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); z-index: 42; max-height: min(70vh, 520px); overflow-y: auto; overscroll-behavior: contain; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 12px 40px rgba(0, 0, 0, 0.24); padding: 8px; }
+.snav-h { font: 600 11px var(--sans); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); padding: 8px 10px 6px; }
+.snav-sheet ul { list-style: none; margin: 0; padding: 0; }
+.snav-sheet button { display: block; width: 100%; min-height: 44px; padding: 10px; border: 0; border-radius: 10px; background: none; color: inherit; font: 500 15px/1.3 var(--sans); text-align: left; cursor: pointer; }
+.snav-sheet button:hover, .snav-sheet button:focus-visible { background: var(--surface-2); outline: none; }
+.snav-sheet button[aria-current] { background: var(--surface-2); font-weight: 600; box-shadow: inset 3px 0 0 var(--up); }
+.snav-sheet .snav-top { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+.snav-sheet .snav-top button { color: var(--ink-2); font-size: 14px; }
+@media (max-width: 760px) { .foot { padding-bottom: 72px; } }
+@media (min-width: 761px) { .snav-btn, .snav-sheet, .snav-scrim { display: none !important; } }
