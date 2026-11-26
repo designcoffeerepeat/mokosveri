@@ -113,7 +113,10 @@ export const ETFS = [
   ['JEPI', 'JPMorgan Equity Premium Income', 'Covered call income', 0.35],
   ['JEPQ', 'JPMorgan Nasdaq Equity Premium Income', 'Covered call income', 0.35],
   ['DIVO', 'Amplify CWP Enhanced Dividend Income', 'Covered call income', 0.56],
-].map(([t, name, sector, er]) => ({ t, name, sector, er, etf: true, years: null }));
+  // Treasury bill fund: in the income calculator as a cash benchmark, kept out
+  // of the dividend ETF table because its payout follows short term rates.
+  ['SGOV', 'iShares 0-3 Month Treasury Bond', 'Treasury bills', 0.09],
+].map(([t, name, sector, er]) => ({ t, name, sector, er, etf: true, years: null, calcOnly: sector === 'Treasury bills' }));
 
 // Third party research notes shown on the page, with their dates.
 export const RESEARCH = {
@@ -394,6 +397,7 @@ export function rowFor(a, q, pts, now = Date.now(), dist = null) {
     years: a.years,
     etf: !!a.etf,
     er: a.er ?? null,
+    calcOnly: !!a.calcOnly,
     price: r2(price),
     change1d: r2(q.regularMarketChangePercent),
     yield: r2(yld),
