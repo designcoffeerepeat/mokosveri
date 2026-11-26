@@ -1,6 +1,6 @@
 // Dividend income calculators on the aristocrats page: one stock (an
-// aristocrat from the list or any dividend ticker typed in) and a mix of
-// several aristocrats. Pure helpers are exported for the offline tests.
+// aristocrat or dividend ETF from the list, or any dividend ticker typed in)
+// and a mix of several aristocrats and ETFs. Pure helpers are exported for the offline tests.
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const usd = (v, d = 0) => (v == null || !isFinite(v) ? 'n/a' : (v < 0 ? '-$' : '$') + Math.abs(v).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }));
 const pc = (v, d = 2) => (v == null || !isFinite(v) ? 'n/a' : `${Number(v).toFixed(d)}%`);
@@ -82,12 +82,15 @@ export function byYield(rows) {
   return [...rows].filter((r) => r.yield != null).sort((a, b) => b.yield - a.yield || a.t.localeCompare(b.t));
 }
 
-export function optionsHtml(list, shown, selected) {
-  return list
-    .slice(0, shown)
-    .map((r, i) => `<option value="${esc(r.t)}"${r.t === selected ? ' selected' : ''}>${i + 1}. ${esc(r.t)}  ${esc(r.name)}  ${r.yield.toFixed(2)}%</option>`)
-    .join('');
+// Picker options: the first `shown` aristocrats, then every dividend ETF.
+export function optionsHtml(list, shown, selected, funds = []) {
+  const opt = (r, i) => `<option value="${esc(r.t)}"${r.t === selected ? ' selected' : ''}>${i + 1}. ${esc(r.t)}  ${esc(r.name)}  ${r.yield.toFixed(2)}%</option>`;
+  const a = list.slice(0, shown).map(opt).join('');
+  if (!funds.length) return a;
+  return `<optgroup label="Aristocrats, highest yield first">${a}</optgroup><optgroup label="Dividend ETFs, highest yield first">${funds.map(opt).join('')}</optgroup>`;
 }
+
+export const isCoveredCall = (r) => !!r && r.sector === 'Covered call income';
 
 // Yearly income bars. One series, so no legend; the year table is the table view.
 export function barsHtml(rows) {
@@ -147,11 +150,13 @@ function save(s) {
 const yearsSel = (id, v) => `<label class="ev-sel"><span class="small muted">Timeframe</span><select id="${id}">${YEARS.map((y) => `<option value="${y}"${y === v ? ' selected' : ''}>${y} year${y === 1 ? '' : 's'}</option>`).join('')}</select></label>`;
 const dripBox = (id, on) => `<label class="dc-check"><input type="checkbox" id="${id}"${on ? ' checked' : ''}/> <span>Reinvest dividends (DRIP)</span></label>`;
 
-export function mountCalculators(el, rows, api) {
+export function mountCalculators(el, rows, api, etfs = []) {
   const list = byYield(rows);
+  const funds = byYield(etfs || []);
+  const all = [...list, ...funds];
   const saved = load();
   const s = {
-    pick: list.some((r) => r.t === saved.pick) ? saved.pick : list[0] && list[0].t,
+    pick: all.some((r) => r.t === saved.pick) ? saved.pick : list[0] && list[0].t,
     mode: saved.mode === 'custom' ? 'custom' : 'list',
     custom: typeof saved.custom === 'string' ? saved.custom : '',
     amount: num(saved.amount, 0, 1e9, 10000),
@@ -166,7 +171,7 @@ export function mountCalculators(el, rows, api) {
     pFilter: '',
   };
   if (s.shown < list.length && list.findIndex((r) => r.t === s.pick) >= s.shown) s.shown = Math.min(list.length, Math.ceil((list.findIndex((r) => r.t === s.pick) + 1) / PAGE) * PAGE);
-  for (const t of Object.keys(s.port)) if (!list.some((r) => r.t === t)) delete s.port[t];
+  for (const t of Object.keys(s.port)) if (!all.some((r) => r.t === t)) delete s.port[t];
   const persist = () => save({ pick: s.pick, mode: s.mode, custom: s.custom, amount: s.amount, years: s.years, drip: s.drip, shown: s.shown, port: s.port, pYears: s.pYears, pDrip: s.pDrip, pGrowth: s.pGrowth, pFixed: s.pFixed });
 
   // Per ticker yield and dividend growth from /api/dividends/calc, fetched once.
@@ -183,16 +188,16 @@ export function mountCalculators(el, rows, api) {
         });
     return pending[t];
   };
-  const rowOf = (t) => list.find((r) => r.t === t);
+  const rowOf = (t) => all.find((r) => r.t === t);
 
   el.innerHTML = `
     <div class="card dc-card" id="dcOne">
-      <div class="dc-head"><h3>One stock</h3><p class="small muted">Pick an aristocrat or type any dividend ticker, then set how much and for how long.</p></div>
+      <div class="dc-head"><h3>One stock</h3><p class="small muted">Pick an aristocrat or dividend ETF, or type any dividend ticker, then set how much and for how long.</p></div>
       <div class="ev-seg dc-mode" role="group" aria-label="Choose a stock">
-        <button type="button" data-mode="list" aria-pressed="${s.mode === 'list'}">Aristocrat</button><button type="button" data-mode="custom" aria-pressed="${s.mode === 'custom'}">Other ticker</button>
+        <button type="button" data-mode="list" aria-pressed="${s.mode === 'list'}">Aristocrat or ETF</button><button type="button" data-mode="custom" aria-pressed="${s.mode === 'custom'}">Other ticker</button>
       </div>
       <div class="dc-row dc-pick-list"${s.mode === 'list' ? '' : ' hidden'}>
-        <label class="dc-field dc-grow"><span class="small muted">Aristocrat, highest yield first</span><select id="dcPick"></select></label>
+        <label class="dc-field dc-grow"><span class="small muted">Aristocrats first, then dividend ETFs</span><select id="dcPick"></select></label>
         <button type="button" class="btn-ghost" id="dcMore"></button>
       </div>
       <form class="dc-row dc-pick-custom" id="dcCustomForm"${s.mode === 'custom' ? '' : ' hidden'}>
@@ -211,21 +216,21 @@ export function mountCalculators(el, rows, api) {
     </div>
 
     <div class="card dc-card" id="dcMix">
-      <div class="dc-head"><h3>Several aristocrats</h3><p class="small muted">Tick the companies you want, set an amount for each, and see the combined yield and income.</p></div>
+      <div class="dc-head"><h3>Several aristocrats and ETFs</h3><p class="small muted">Tick the companies and funds you want, set an amount for each, and see the combined yield and income.</p></div>
       <div class="dc-row">
         <label class="dc-field dc-grow"><span class="small muted">Find</span><input id="dcFilter" placeholder="Ticker, name or sector" autocomplete="off"/></label>
         <label class="dc-field"><span class="small muted">Amount per pick</span><input id="dcEach" class="mono" inputmode="decimal" value="1000"/></label>
       </div>
-      <div class="dc-list" id="dcList" role="group" aria-label="Aristocrats"></div>
+      <div class="dc-list" id="dcList" role="group" aria-label="Aristocrats and dividend ETFs"></div>
       <div class="dc-row">
         ${yearsSel('dcPYears', s.pYears)}
-        <label class="ev-sel"><span class="small muted">Dividend growth</span><select id="dcPGrowth"><option value="own"${s.pGrowth === 'own' ? ' selected' : ''}>Each stock's last 5 years</option><option value="fixed"${s.pGrowth === 'fixed' ? ' selected' : ''}>Same rate for all</option></select></label>
+        <label class="ev-sel"><span class="small muted">Dividend growth</span><select id="dcPGrowth"><option value="own"${s.pGrowth === 'own' ? ' selected' : ''}>Each pick's last 5 years</option><option value="fixed"${s.pGrowth === 'fixed' ? ' selected' : ''}>Same rate for all</option></select></label>
         <label class="dc-field dc-sm" id="dcPFixedWrap"${s.pGrowth === 'fixed' ? '' : ' hidden'}><span class="small muted">Rate / yr</span><input id="dcPFixed" class="mono" inputmode="decimal" value="${s.pFixed}"/></label>
         ${dripBox('dcPDrip', s.pDrip)}
       </div>
       <div id="dcPOut"></div>
     </div>
-    <p class="small muted">Projections, not promises. They assume the yield you see today, steady dividend growth at the rate shown, and no taxes or fees. Dividend growth defaults to each company's change in yearly dividends over the last 5 full years (held between ${GROWTH_MIN}% and ${GROWTH_MAX}%). Price growth defaults to the dividend growth rate, which keeps the yield on new purchases steady; DRIP buys more shares at that price each year end.</p>`;
+    <p class="small muted">Projections, not promises. They assume the yield you see today, steady dividend growth at the rate shown, and no taxes or fees. Dividend growth defaults to each company's or fund's change in yearly payouts over the last 5 full years (held between ${GROWTH_MIN}% and ${GROWTH_MAX}%). Price growth defaults to the dividend growth rate, which keeps the yield on new purchases steady; DRIP buys more shares at that price each year end.</p>`;
 
   const $ = (sel) => el.querySelector(sel);
 
@@ -234,7 +239,7 @@ export function mountCalculators(el, rows, api) {
   let growthTouched = false;
 
   const paintPicker = () => {
-    $('#dcPick').innerHTML = optionsHtml(list, s.shown, s.pick);
+    $('#dcPick').innerHTML = optionsHtml(list, s.shown, s.pick, funds);
     const more = $('#dcMore');
     const left = list.length - s.shown;
     more.hidden = left <= 0;
@@ -262,10 +267,12 @@ export function mountCalculators(el, rows, api) {
     if (cur.price) bits.push(`price ${usd(cur.price, 2)}`);
     if (cur.payments) bits.push(`${cur.payments} payment${cur.payments === 1 ? '' : 's'} a year`);
     if (cur.raises) bits.push(`${cur.raises} years of raises`);
+    if (cur.er != null) bits.push(`fee ${pc(cur.er)} a year`);
     if (cur.growth != null) bits.push(`dividends ${cur.growth >= 0 ? 'grew' : 'fell'} ${pc(Math.abs(cur.growth), 1)} a year over ${cur.growthYears} years`);
     else if (cur.loading) bits.push('<span class="muted">loading dividend history…</span>');
     let warn = '';
-    if (cur.yield >= 8) warn = `<div class="notice small">A ${pc(cur.yield, 1)} yield is very high. It often means the market expects a cut, or the payout includes option premium or return of capital. Check that it is covered before counting on it.</div>`;
+    if (cur.cc) warn = '<div class="notice small">Covered call fund: much of the payout is option premium, so it moves with market volatility, can shrink, and rarely grows like a dividend. Consider a dividend growth of 0% or less.</div>';
+    else if (cur.yield >= 8) warn = `<div class="notice small">A ${pc(cur.yield, 1)} yield is very high. It often means the market expects a cut, or the payout includes option premium or return of capital. Check that it is covered before counting on it.</div>`;
     else if (cur.growth != null && cur.growth < 0) warn = '<div class="notice small">This payout has shrunk over the period, so the default projection has it shrinking too.</div>';
     box.innerHTML = `<div>${bits.join(' · ')}</div>${warn}`;
   };
@@ -279,7 +286,7 @@ export function mountCalculators(el, rows, api) {
   const choose = async (t, fromList) => {
     growthTouched = false;
     const r = fromList ? rowOf(t) : null;
-    cur = r ? { t, name: r.name, yield: r.yield, raises: r.years, price: r.price, loading: true } : null;
+    cur = r ? { t, name: r.name, yield: r.yield, raises: r.years, price: r.price, er: r.er, cc: isCoveredCall(r), basis: r.etf ? 'trailing' : 'forward', loading: true } : null;
     if (cur) {
       setGrowthDefault();
       paintInfo();
@@ -291,8 +298,8 @@ export function mountCalculators(el, rows, api) {
     try {
       const d = await getInfo(t);
       if ((s.mode === 'list' ? s.pick : s.custom) !== t) return;
-      // Keep the page's live yield for aristocrats so the two sections agree.
-      cur = { ...d, yield: r && r.yield != null ? r.yield : d.yield, basis: r ? 'forward' : d.basis, loading: false };
+      // Keep the page's live yield for listed tickers so the sections agree.
+      cur = { ...d, yield: r && r.yield != null ? r.yield : d.yield, basis: r ? cur.basis : d.basis, er: r ? r.er : null, cc: isCoveredCall(r), loading: false };
     } catch (e) {
       if ((s.mode === 'list' ? s.pick : s.custom) !== t) return;
       if (!cur) {
@@ -341,7 +348,7 @@ export function mountCalculators(el, rows, api) {
     $('#dcCustom').value = t;
     s.custom = t;
     persist();
-    choose(t, list.some((r) => r.t === t));
+    choose(t, all.some((r) => r.t === t));
   });
   $('#dcAmount').addEventListener('input', (e) => {
     s.amount = num(e.target.value, 0, 1e9, 0);
@@ -361,21 +368,26 @@ export function mountCalculators(el, rows, api) {
     paintOne();
   });
   if (s.mode === 'list' && s.pick) choose(s.pick, true);
-  else if (s.mode === 'custom' && s.custom) choose(s.custom, list.some((r) => r.t === s.custom));
+  else if (s.mode === 'custom' && s.custom) choose(s.custom, all.some((r) => r.t === s.custom));
   else paintInfo('<span class="muted">Type a ticker and tap Get yield.</span>');
 
-  // ----- several aristocrats -----
+  // ----- several aristocrats and ETFs -----
   const paintList = () => {
     const q = s.pFilter.trim().toLowerCase();
-    const shown = list.filter((r) => !q || r.t.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || (r.sector || '').toLowerCase().includes(q));
-    $('#dcList').innerHTML = shown.length
-      ? shown
-          .map((r) => {
-            const on = s.port[r.t] != null;
-            return `<label class="dc-opt${on ? ' on' : ''}"><input type="checkbox" value="${esc(r.t)}"${on ? ' checked' : ''}/><b class="mono">${esc(r.t)}</b><span class="dc-opt-nm">${esc(r.name)}</span><span class="mono small">${r.yield.toFixed(2)}%</span></label>`;
-          })
-          .join('')
-      : '<p class="small muted">No aristocrat matches that.</p>';
+    const match = (r) => !q || r.t.toLowerCase().includes(q) || r.name.toLowerCase().includes(q) || (r.sector || '').toLowerCase().includes(q) || (r.etf && 'etf fund'.includes(q));
+    const opts = (rs) =>
+      rs
+        .map((r) => {
+          const on = s.port[r.t] != null;
+          return `<label class="dc-opt${on ? ' on' : ''}"><input type="checkbox" value="${esc(r.t)}"${on ? ' checked' : ''}/><b class="mono">${esc(r.t)}</b><span class="dc-opt-nm">${esc(r.name)}</span><span class="mono small">${r.yield.toFixed(2)}%</span></label>`;
+        })
+        .join('');
+    const a = list.filter(match);
+    const f = funds.filter(match);
+    $('#dcList').innerHTML =
+      (a.length ? `<div class="dc-grp small muted">Aristocrats</div>${opts(a)}` : '') +
+      (f.length ? `<div class="dc-grp small muted">Dividend ETFs</div>${opts(f)}` : '') +
+      (a.length || f.length ? '' : '<p class="small muted">Nothing matches that.</p>');
   };
 
   const growthFor = (t) => (s.pGrowth === 'fixed' ? s.pFixed : info[t] ? clampGrowth(info[t].growth) ?? 0 : null);
@@ -383,7 +395,7 @@ export function mountCalculators(el, rows, api) {
   const paintPort = () => {
     const out = $('#dcPOut');
     const picks = Object.keys(s.port).filter((t) => rowOf(t));
-    if (!picks.length) return void (out.innerHTML = '<div class="dc-empty small muted">Tick a few aristocrats above to build a mix.</div>');
+    if (!picks.length) return void (out.innerHTML = '<div class="dc-empty small muted">Tick a few aristocrats or ETFs above to build a mix.</div>');
     const waiting = s.pGrowth === 'own' && picks.some((t) => !info[t]);
     const holdings = picks.map((t) => ({ t, amount: s.port[t], yield: rowOf(t).yield, growth: growthFor(t) ?? 0 }));
     const p = portfolio(holdings, { years: s.pYears, drip: s.pDrip });

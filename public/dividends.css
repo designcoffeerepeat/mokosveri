@@ -117,3 +117,4 @@
   .dc-row > .dc-field, .dc-row > .ev-sel { flex: 1 1 140px; }
   .dc-kpi dd { font-size: 17px; }
 }
+.dc-grp { grid-column: 1 / -1; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11px; padding: 6px 2px 0; }

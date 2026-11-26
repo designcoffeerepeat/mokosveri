@@ -243,7 +243,7 @@ export async function renderDividends(app, api) {
     app.querySelector('#dvCalcH').scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   import('/divcalc.js')
-    .then((m) => m.mountCalculators(app.querySelector('#dvCalc'), d.rows, api))
+    .then((m) => m.mountCalculators(app.querySelector('#dvCalc'), d.rows, api, d.etfs || []))
     .catch((e) => (app.querySelector('#dvCalc').innerHTML = `<div class="notice small">The calculator could not load (${esc(e.message)}).</div>`));
 
   const paint = () => {
