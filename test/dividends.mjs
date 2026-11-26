@@ -122,7 +122,6 @@ assert.ok(redditHtml({ ...d, reddit: { ok: true, asOf: new Date().toISOString(),
 assert.ok(researchHtml(d, byT).includes('Morningstar'));
 assert.ok(etfTableHtml(d.etfs, { min: 0, sort: 'years', sector: 'all' }).includes('SCHD'), 'ETF table ranks by yield when the stock sort is years');
 assert.ok(!etfTableHtml(d.etfs, { min: 0, sort: 'yield', sector: 'all' }).includes('SGOV'), 'T-bill fund stays out of the dividend ETF table');
-assert.ok(d.etfs.find((x) => x.t === 'SGOV').calcOnly, 'SGOV is calculator only');
 // Odd Yahoo values (objects, strings) do not break a row.
 const odd = rowFor(ARISTOCRATS[0], { regularMarketPrice: {}, dividendRate: '1.2', exDividendDate: {}, trailingAnnualDividendYield: 'x' }, pts, now);
 assert.equal(odd.exDiv, null);

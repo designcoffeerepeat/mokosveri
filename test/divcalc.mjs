@@ -2,8 +2,8 @@
 // combined mix, and the per ticker yield and growth lookup. Run: node test/divcalc.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { project, portfolio, byYield, optionsHtml, resultHtml, clampGrowth, isCoveredCall, isTbill, PAGE } from '../public/divcalc.js';
-import { ETFS } from '../src/dividends.js';
+import { project, portfolio, byYield, optionsHtml, resultHtml, clampGrowth, isCoveredCall, isTbill, isFlat, groupFunds, catOf, CATS, PAGE } from '../public/divcalc.js';
+import { ETFS, INCOME_FUNDS, incomeFunds } from '../src/dividends.js';
 import { dividendStats, dividendCalc } from '../src/dividends.js';
 
 for (const f of ['public/divcalc.js', 'public/dividends.css', 'src/dividends.js']) assert.ok(!readFileSync(new URL('../' + f, import.meta.url), 'utf8').includes('—'), `${f} has no em dash`);
@@ -70,21 +70,30 @@ assert.deepEqual(byYield(rows).map((r) => r.t), ['W', 'Y', 'X'], 'highest yield 
 const many = Array.from({ length: 69 }, (_, i) => ({ t: 'T' + i, name: 'N' + i, yield: 10 - i / 10 }));
 assert.equal((optionsHtml(byYield(many), PAGE, 'T3').match(/<option/g) || []).length, 20, 'first page is 20');
 assert.ok(optionsHtml(byYield(many), PAGE, 'T3').includes('value="T3" selected'));
-// ETFs follow the aristocrats in their own group, all of them shown.
-const fundRows = byYield(ETFS.map((e, i) => ({ ...e, yield: 1 + i / 3 })));
-const withFunds = optionsHtml(byYield(many), PAGE, 'SCHD', fundRows);
-assert.equal((withFunds.match(/<option/g) || []).length, 20 + ETFS.length);
-assert.ok(withFunds.indexOf('Dividend ETFs') > withFunds.indexOf('T19'), 'ETF group comes after the aristocrats');
-for (const t of ['SCHD', 'VYM', 'DGRO', 'NOBL', 'JEPI', 'HDV', 'VIG', 'SPYD']) assert.ok(withFunds.includes(`value="${t}"`), `${t} in the picker`);
+// Income ETFs follow the dividend stocks, grouped by type, all of them shown.
+const allFunds = [...ETFS, ...INCOME_FUNDS];
+assert.equal(new Set(allFunds.map((e) => e.t)).size, allFunds.length, 'no fund listed twice');
+const fundRows = allFunds.map((e, i) => ({ ...e, yield: 1 + i / 3 }));
+const groups = groupFunds(fundRows);
+assert.deepEqual(groups.map(([l]) => l), CATS.map(([l]) => l), 'every category has funds, in order');
+assert.ok(allFunds.every((e) => catOf(e) !== 'Other income ETFs'), 'every fund has a known category');
+const withFunds = optionsHtml(byYield(many), PAGE, 'SCHD', groups);
+assert.equal((withFunds.match(/<option/g) || []).length, 20 + allFunds.length);
+assert.ok(withFunds.indexOf('Dividend growth ETFs') > withFunds.indexOf('T19'), 'ETF groups come after the stocks');
+assert.ok(!/aristocrat/i.test(withFunds.replace(/ProShares[^<]*Aristocrats/g, '')), 'no group is called aristocrats');
+for (const t of ['SCHD', 'VYM', 'DGRO', 'NOBL', 'JEPI', 'HDV', 'VIG', 'SPYD', 'SGOV', 'BIL', 'BND', 'PFF', 'QYLD']) assert.ok(withFunds.includes(`value="${t}"`), `${t} in the picker`);
+assert.ok(isFlat(INCOME_FUNDS.find((e) => e.t === 'BND')) && isFlat(INCOME_FUNDS.find((e) => e.t === 'PFF')));
+assert.ok(!isFlat(INCOME_FUNDS.find((e) => e.t === 'QYLD')));
 assert.ok(withFunds.includes('value="SCHD" selected'));
 assert.ok(isCoveredCall(ETFS.find((e) => e.t === 'JEPI')));
-// SGOV sits in its own Treasury bill group and is projected flat.
-const sgov = ETFS.find((e) => e.t === 'SGOV');
-assert.ok(sgov && sgov.calcOnly && isTbill(sgov));
+// SGOV sits in the Treasury bill group and is projected flat.
+const sgov = INCOME_FUNDS.find((e) => e.t === 'SGOV');
+assert.ok(sgov && isTbill(sgov) && isFlat(sgov));
+assert.ok(!ETFS.some((e) => e.t === 'SGOV'), 'SGOV is not in the dividend ETF table');
 assert.ok(isTbill(null, 'bil'), 'typed T-bill tickers are recognized');
 assert.ok(!isTbill(ETFS.find((e) => e.t === 'SCHD')));
-const withCash = optionsHtml(byYield(many), PAGE, 'SGOV', [], [{ ...sgov, yield: 4.2 }]);
-assert.ok(withCash.includes('Treasury bill ETFs') && withCash.includes('value="SGOV" selected'));
+const withCash = optionsHtml(byYield(many), PAGE, 'SGOV', groupFunds([{ ...sgov, yield: 4.2 }]));
+assert.ok(withCash.includes('Treasury bill and cash ETFs') && withCash.includes('value="SGOV" selected'));
 const flat = project({ amount: 10000, yieldPct: 4.2, years: 5, growthPct: 0, priceGrowthPct: 0, drip: false });
 close(flat.total, 2100);
 close(flat.endValue, 10000);
@@ -143,5 +152,14 @@ assert.ok(d.growth != null);
 const ko = await dividendCalc(env, 'KO');
 assert.equal(ko.aristocrat, true);
 assert.equal(ko.raises, 64);
+
+// Income fund list: one quote plus one chart call per fund, under the Workers limit.
+let fcalls = 0;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url) => ((fcalls += 1), realFetch(url));
+const fl = await incomeFunds({ CACHE: { async get() { return null; }, async put() {} } });
+assert.equal(fl.funds.length, INCOME_FUNDS.length);
+assert.ok(fl.funds.every((f) => f.yield != null), 'every income fund has a yield');
+assert.ok(fcalls < 45, `income funds stay under the subrequest limit (${fcalls})`);
 
 console.log('divcalc: all checks passed');
