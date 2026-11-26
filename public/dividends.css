@@ -61,3 +61,59 @@
   .dv-nm { display: none; }
 }
 .dv-f-cc { color: var(--warn); border-style: dashed; }
+
+/* Dividend income calculators */
+.dc-wrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.dc-card { padding: 16px 18px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
+.dc-head h3 { margin: 0 0 2px; font-size: 16px; }
+.dc-head p { margin: 0; }
+.dc-mode { justify-self: start; }
+.dc-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.dc-row[hidden], .dc-field[hidden] { display: none; }
+.dc-field { display: grid; gap: 4px; min-width: 0; }
+.dc-field input, .dc-field select { font: 14px var(--sans); height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); width: 150px; max-width: 100%; }
+.dc-field input.mono { font-family: var(--mono); }
+.dc-field input:focus, .dc-field select:focus { outline: none; border-color: var(--ink-2); }
+.dc-grow { flex: 1 1 260px; }
+.dc-grow input, .dc-grow select { width: 100%; }
+.dc-sm input { width: 110px; }
+.dc-row .ev-sel { flex-direction: column; align-items: stretch; gap: 4px; }
+.dc-row .ev-sel select { height: 36px; }
+.dc-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; height: 36px; cursor: pointer; }
+.dc-info { display: grid; gap: 8px; }
+.dc-info:empty { display: none; }
+.dc-info a { text-decoration: none; }
+.dc-info .notice { margin-top: 0; }
+.dc-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0; }
+.dc-kpi { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; display: grid; align-content: start; gap: 2px; min-width: 0; }
+.dc-kpi dt { font-size: 12px; color: var(--muted); }
+.dc-kpi dd { margin: 0; font-size: 20px; font-weight: 500; overflow-wrap: anywhere; }
+.dc-kpi small { font-size: 12px; }
+.dc-chart { margin: 14px 0 0; }
+.dc-chart svg { display: block; width: 100%; height: 150px; margin-top: 6px; border-bottom: 1px solid var(--line); }
+.dc-bar path { fill: var(--up); opacity: 0.85; }
+.dc-bar .dc-hit { fill: transparent; }
+.dc-bar:hover path { opacity: 1; }
+.dc-axis { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; }
+.dc-years { margin-top: 10px; }
+.dc-years summary { cursor: pointer; }
+.dc-years table { margin-top: 8px; }
+.dc-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 6px; max-height: 260px; overflow-y: auto; padding: 2px; }
+.dc-opt { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; cursor: pointer; font-size: 13.5px; min-width: 0; }
+.dc-opt.on { border-color: var(--ink-2); background: var(--surface-2); }
+.dc-opt-nm { flex: 1; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-ptbl td { vertical-align: middle; }
+.dc-ptbl td a { text-decoration: none; }
+.dc-ptbl tfoot th { color: var(--ink); font-weight: 600; border-bottom: 0; }
+.dc-amt { width: 100px; height: 30px; padding: 0 8px; text-align: right; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); font: 13px var(--mono); }
+.dc-sub { margin: 10px 0; }
+.dc-empty { padding: 6px 0; }
+@media (max-width: 860px) {
+  .dc-kpis { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .dc-card { padding: 14px; }
+  .dc-field input, .dc-row .ev-sel select { width: 100%; }
+  .dc-row > .dc-field, .dc-row > .ev-sel { flex: 1 1 140px; }
+  .dc-kpi dd { font-size: 17px; }
+}

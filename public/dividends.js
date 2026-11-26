@@ -198,7 +198,7 @@ function savePrefs(st) {
 }
 
 export async function renderDividends(app, api) {
-  const hero = `<section class="hero"><h1>Dividend aristocrats</h1><p>S&amp;P 500 companies that have raised their dividend every year for at least 25 years. Filtered to yields above 2% and ranked by how they have actually performed, alongside the popular dividend ETFs and what r/dividends is saying about them.</p>`;
+  const hero = `<section class="hero"><h1>Dividend aristocrats</h1><p>S&amp;P 500 companies that have raised their dividend every year for at least 25 years. Filtered to yields above 2% and ranked by how they have actually performed, alongside the popular dividend ETFs, what r/dividends is saying about them, and a calculator for the income they could pay you.</p>`;
   app.innerHTML = `${hero}</section><div class="loading"><div class="spinner"></div>Loading yields, returns and Reddit chatter…</div>`;
   let d;
   try {
@@ -213,12 +213,43 @@ export async function renderDividends(app, api) {
   if (!SORTS[st.sort] && st.sort !== 'r1y') st.sort = 'tr1y';
   const above2 = d.rows.filter((r) => r.yield != null && r.yield >= 2).length;
 
+  // The page is laid out once; only the filtered lists repaint, so the
+  // income calculators below keep what the reader typed.
+  app.innerHTML = `${hero}
+      <div class="meta-line">Updated ${esc(new Date(d.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))} · ${d.count} aristocrats, ${above2} yield 2% or more · Average yield ${d.avgYield != null ? d.avgYield.toFixed(2) + '%' : 'n/a'} · <a href="#dvCalcH" data-jump="dvCalcH">Income calculator</a></div></section>
+    ${!d.quotesOk ? '<div class="notice small">Live yields are unavailable right now, so yields show the last hand checked figures (Oct 23, 2026).</div>' : ''}
+    <div id="dvLists"></div>
+
+    <h2 class="section" id="dvCalcH">Dividend income calculator</h2>
+    <div id="dvCalc" class="dc-wrap"></div>
+
+    <h2 class="section">What r/dividends is saying</h2>
+    ${redditHtml(d, byT)}
+
+    <h2 class="section">Research notes</h2>
+    ${researchHtml(d, byT)}
+
+    <h2 class="section">How to read this</h2>
+    <div class="card dv-how"><ul>
+      <li><b>Yield</b> is the forward annual dividend divided by today's price. A yield well above a company's normal level usually means the price fell, so check why.</li>
+      <li><b>Check the payout</b> marks a 5%+ yield after a 15%+ price drop over a year, a common shape of a dividend at risk.</li>
+      <li><b>Dividend King</b> means 50 or more straight years of raises.</li>
+      <li>Membership (69 companies, no changes at S&amp;P's January 2026 review) and streaks were checked on ${esc(shortDate(d.listChecked))}. Prices, yields and returns are live from Yahoo Finance and refresh every 3 hours.</li>
+    </ul></div>
+    <div class="notice"><b>Educational, not financial advice.</b> A long dividend streak is not a promise: past aristocrats like AT&amp;T, VF Corp, Walgreens and Leggett &amp; Platt cut their dividends. Reddit opinions and analyst picks can be wrong. Do your own research and consult a licensed professional before investing.</div>`;
+  const lists = app.querySelector('#dvLists');
+  app.querySelector('[data-jump]').addEventListener('click', (e) => {
+    e.preventDefault();
+    app.querySelector('#dvCalcH').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  import('/divcalc.js')
+    .then((m) => m.mountCalculators(app.querySelector('#dvCalc'), d.rows, api))
+    .catch((e) => (app.querySelector('#dvCalc').innerHTML = `<div class="notice small">The calculator could not load (${esc(e.message)}).</div>`));
+
   const paint = () => {
     const rows = pickRows(d.rows, st);
     const sortKey = SORTS[st.sort] ? st.sort : 'tr1y';
-    app.innerHTML = `${hero}
-        <div class="meta-line">Updated ${esc(new Date(d.asOf).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }))} · ${d.count} aristocrats, ${above2} yield 2% or more · Average yield ${d.avgYield != null ? d.avgYield.toFixed(2) + '%' : 'n/a'}</div></section>
-      ${!d.quotesOk ? '<div class="notice small">Live yields are unavailable right now, so yields show the last hand checked figures (Oct 23, 2026).</div>' : ''}
+    lists.innerHTML = `
       <div class="ev-bar dv-bar">
         <div class="ev-seg" role="group" aria-label="Minimum yield" data-k="min">${MIN_YIELDS.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === st.min}">${esc(l)}</button>`).join('')}</div>
         <label class="ev-sel"><span class="small muted">Rank by</span><select id="dvSort">${Object.entries(SORTS).map(([k, v]) => `<option value="${k}"${st.sort === k ? ' selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
@@ -232,24 +263,9 @@ export async function renderDividends(app, api) {
 
       <h2 class="section">Dividend ETFs ${st.min ? `yielding ${st.min}% or more` : ''}</h2>
       ${etfTableHtml(d.etfs, st)}
-      <p class="small muted">Same yield filter and ranking as the stocks above. Yield is the last 12 months of distributions divided by today's price. Fee is the fund's yearly expense ratio, already taken out of its returns. Covered call funds pay more now by selling away part of the upside, so their payouts can shrink and rarely grow.</p>
+      <p class="small muted">Same yield filter and ranking as the stocks above. Yield is the last 12 months of distributions divided by today's price. Fee is the fund's yearly expense ratio, already taken out of its returns. Covered call funds pay more now by selling away part of the upside, so their payouts can shrink and rarely grow.</p>`;
 
-      <h2 class="section">What r/dividends is saying</h2>
-      ${redditHtml(d, byT)}
-
-      <h2 class="section">Research notes</h2>
-      ${researchHtml(d, byT)}
-
-      <h2 class="section">How to read this</h2>
-      <div class="card dv-how"><ul>
-        <li><b>Yield</b> is the forward annual dividend divided by today's price. A yield well above a company's normal level usually means the price fell, so check why.</li>
-        <li><b>Check the payout</b> marks a 5%+ yield after a 15%+ price drop over a year, a common shape of a dividend at risk.</li>
-        <li><b>Dividend King</b> means 50 or more straight years of raises.</li>
-        <li>Membership (69 companies, no changes at S&amp;P's January 2026 review) and streaks were checked on ${esc(shortDate(d.listChecked))}. Prices, yields and returns are live from Yahoo Finance and refresh every 3 hours.</li>
-      </ul></div>
-      <div class="notice"><b>Educational, not financial advice.</b> A long dividend streak is not a promise: past aristocrats like AT&amp;T, VF Corp, Walgreens and Leggett &amp; Platt cut their dividends. Reddit opinions and analyst picks can be wrong. Do your own research and consult a licensed professional before investing.</div>`;
-
-    app.querySelectorAll('.ev-seg').forEach((g) =>
+    lists.querySelectorAll('.ev-seg').forEach((g) =>
       g.addEventListener('click', (ev) => {
         const b = ev.target.closest('button');
         if (!b) return;
@@ -258,11 +274,11 @@ export async function renderDividends(app, api) {
         paint();
       })
     );
-    const so = app.querySelector('#dvSort');
+    const so = lists.querySelector('#dvSort');
     so.addEventListener('change', () => ((st.sort = so.value), (st.asc = false), savePrefs(st), paint()));
-    const se = app.querySelector('#dvSector');
+    const se = lists.querySelector('#dvSector');
     se.addEventListener('change', () => ((st.sector = se.value), savePrefs(st), paint()));
-    app.querySelectorAll('[data-sort]').forEach((b) =>
+    lists.querySelectorAll('[data-sort]').forEach((b) =>
       b.addEventListener('click', () => {
         const k = b.dataset.sort;
         if (st.sort === k) st.asc = !st.asc;
