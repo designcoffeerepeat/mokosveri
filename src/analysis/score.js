@@ -271,8 +271,12 @@ export function scoreNews(n) {
 }
 
 // ---------- Composite ----------
+const finite = (x) => typeof x === 'number' && isFinite(x);
+
 export function composite(components) {
-  const cs = components.filter(Boolean);
+  // A component with a non numeric score (bad upstream data) is left out
+  // rather than turning the whole composite into NaN.
+  const cs = components.filter((c) => c && finite(c.score) && finite(c.weight) && finite(c.confidence));
   let num = 0;
   let den = 0;
   for (const c of cs) {
@@ -291,43 +295,48 @@ export function composite(components) {
 
 // How likely is a big move (either direction)? 0 to 100.
 export function movePotential({ tech, positioning, social, earningsDays, score, insiderCluster, newsFlow = 0 }) {
+  // Each input adds its share only when it is a real number, so one bad
+  // field cannot turn the whole reading into NaN.
   let p = 0;
+  const add = (x) => {
+    if (finite(x)) p += x;
+  };
   const why = [];
   if (tech) {
-    p += clamp((tech.vol20 || 0) / 80, 0, 1) * 30;
+    add(clamp((tech.vol20 || 0) / 80, 0, 1) * 30);
     if (tech.vol20 > 50) why.push(`high realized volatility (${tech.vol20.toFixed(0)}% annualized)`);
     if (tech.relVolume5 != null) {
-      p += clamp((tech.relVolume5 - 1) / 1.5, 0, 1) * 15;
+      add(clamp((tech.relVolume5 - 1) / 1.5, 0, 1) * 15);
       if (tech.relVolume5 > 1.5) why.push(`volume running ${tech.relVolume5.toFixed(1)}x normal this week`);
     }
   }
   if (positioning && positioning.shortPctFloat != null) {
-    p += clamp((positioning.shortPctFloat * 100) / 25, 0, 1) * 15;
+    add(clamp((positioning.shortPctFloat * 100) / 25, 0, 1) * 15);
     if (positioning.shortPctFloat > 0.15) why.push('heavy short interest');
   }
   if (social && social.ape) {
     const mom = (social.ape.mentions - social.ape.mentions24hAgo) / Math.max(social.ape.mentions24hAgo, 5);
-    p += clamp(mom / 2, 0, 1) * 10;
+    add(clamp(mom / 2, 0, 1) * 10);
     if (social.ape.rank <= 25) {
-      p += 5;
+      add(5);
       why.push('top 25 on Reddit');
     }
   }
   if (earningsDays != null && earningsDays >= 0 && earningsDays <= 14) {
-    p += 15;
+    add(15);
     why.push(`earnings in ${earningsDays} day${earningsDays === 1 ? '' : 's'}`);
   }
   if (insiderCluster) {
-    p += 5;
+    add(5);
     why.push('insider cluster buying');
   }
   if (newsFlow >= 6) {
-    p += 8;
+    add(8);
     why.push(`${newsFlow} news stories in the last 48 hours`);
   }
-  if (Math.abs(score) >= 40) p += 10;
+  if (finite(score) && Math.abs(score) >= 40) add(10);
   p = Math.round(clamp(p, 0, 100));
   const level = p >= 60 ? 'High' : p >= 35 ? 'Elevated' : 'Normal';
-  const oneSigma1m = tech && tech.vol20 ? tech.vol20 / Math.sqrt(12) : null;
+  const oneSigma1m = tech && finite(tech.vol20) && tech.vol20 > 0 ? tech.vol20 / Math.sqrt(12) : null;
   return { value: p, level, why, typicalMonthMovePct: oneSigma1m ? +oneSigma1m.toFixed(1) : null };
 }

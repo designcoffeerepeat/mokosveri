@@ -193,7 +193,7 @@ async function handleApi(request, env, ctx, url) {
     const t = cleanTicker(decodeURIComponent(m[1]));
     if (!t) return json({ error: 'That does not look like a ticker symbol.' }, 400);
     const fresh = url.searchParams.get('fresh') === '1';
-    const key = `an:v1:${t}`;
+    const key = `an:v2:${t}`;
     const now = Date.now();
     const refresh = async () => {
       const a = await analyzeTicker(env, t, { waitUntil: (p) => ctx.waitUntil(p) });

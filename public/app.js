@@ -412,7 +412,8 @@ function fillAnalysis(a) {
   const tc = a.technicals || {};
   const pos = a.positioning || {};
   const an = a.analyst;
-  const needle = 50 + a.score / 2;
+  const hasScore = typeof a.score === 'number' && isFinite(a.score);
+  const needle = hasScore ? 50 + a.score / 2 : 50;
   const isIdx = a.type === 'Index';
 
   const insTx = a.insider && a.insider.transactions ? a.insider.transactions : [];
@@ -511,14 +512,14 @@ function fillAnalysis(a) {
       <div class="score-main">
         <div class="lbl">Signal balance</div>
         <div class="verdict ${a.score >= 15 ? 'up' : a.score <= -15 ? 'down' : ''}">${esc(a.verdict)}</div>
-        <div class="scorenum">Score ${a.score > 0 ? '+' : ''}${a.score} of ±100 · data coverage ${Math.round(a.coverage * 100)}%</div>
+        <div class="scorenum">${hasScore ? `Score ${a.score > 0 ? '+' : ''}${a.score} of ±100` : 'Score unavailable'}${isFinite(a.coverage) && a.coverage != null ? ` · data coverage ${Math.round(a.coverage * 100)}%` : ''}</div>
         <div class="meter"><span class="needle" style="left:${needle}%"></span></div>
         <div class="meter-scale"><span>Bearish</span><span>Neutral</span><span>Bullish</span></div>
       </div>
       <div class="score-move">
         <div class="lbl">Odds of a big move</div>
         <div class="move-level">${esc(a.move.level)}</div>
-        <div class="bar"><i style="width:${a.move.value}%"></i></div>
+        <div class="bar"><i style="width:${isFinite(a.move.value) && a.move.value != null ? a.move.value : 0}%"></i></div>
         <div class="small">${a.move.typicalMonthMovePct ? `A typical month for this ticker moves about <b>±${a.move.typicalMonthMovePct}%</b> at current volatility.` : ''}</div>
         ${a.move.why.length ? `<ul class="why">${a.move.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
         ${a.earningsDate ? `<div class="small" style="margin-top:8px">Next earnings: <b>${esc(shortDate(a.earningsDate))}</b></div>` : ''}

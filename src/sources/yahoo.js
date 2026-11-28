@@ -22,8 +22,13 @@ export async function fetchChart(ticker, range = '1y', interval = '1d') {
   const q = r.indicators.quote[0];
   const bars = [];
   for (let i = 0; i < r.timestamp.length; i++) {
-    if (q.close[i] == null) continue;
-    bars.push({ t: r.timestamp[i], o: q.open[i], h: q.high[i], l: q.low[i], c: q.close[i], v: q.volume[i] || 0 });
+    // Yahoo sometimes sends null, zero or partial bars (missing high/low).
+    // A zero close turns log returns into Infinity and volatility into NaN,
+    // so drop bad closes and fill gaps from the close.
+    const c = Number(q.close[i]);
+    if (!(c > 0) || !isFinite(c)) continue;
+    const fin = (x) => (x != null && isFinite(x) && x > 0 ? Number(x) : c);
+    bars.push({ t: r.timestamp[i], o: fin(q.open[i]), h: Math.max(fin(q.high[i]), c), l: Math.min(fin(q.low[i]), c), c, v: Number(q.volume[i]) || 0 });
   }
   const m = r.meta || {};
   // Cash distributions in the range (ETFs and dividend stocks), oldest first.
