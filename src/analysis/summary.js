@@ -27,9 +27,31 @@ const role = (t) => {
   return null;
 };
 
+// Upstream feeds (SEC, RSS, analyst firm names) and the AI model sometimes
+// hand back HTML entities, at times double encoded (&amp;amp;). The page
+// escapes text itself, so copy should hold plain characters.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
+export function decodeEntities(s) {
+  let out = String(s ?? '');
+  for (let i = 0; i < 3 && /&(#\d+|#x[0-9a-f]+|[a-z]+);/i.test(out); i++) {
+    out = out.replace(/&(#\d+|#x[0-9a-f]+|[a-z]+);/gi, (m, e) => {
+      const k = e.toLowerCase();
+      if (k in ENTITIES) return ENTITIES[k];
+      if (k[0] === '#') {
+        const n = k[1] === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10);
+        return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : m;
+      }
+      return m;
+    });
+  }
+  return out;
+}
+
+const isNum = (x) => typeof x === 'number' && isFinite(x);
+
 // Strip characters the site owner does not want in copy.
 export function cleanCopy(s) {
-  return String(s || '')
+  return decodeEntities(s || '')
     .replace(/\s*[—–]\s*/g, ', ')
     .replace(/\s+-\s+/g, ', ')
     .replace(/,\s*,/g, ',')
@@ -83,7 +105,9 @@ export function buildPlainFacts(a) {
   if (an && an.targetMean && t.price) {
     const up = (an.targetMean / t.price - 1) * 100;
     const n = an.numAnalysts ? ` across ${an.numAnalysts} analysts` : '';
-    const rec = an.recKey ? `, consensus ${String(an.recKey).replace(/_/g, ' ')}` : '';
+    // Yahoo uses "none" when there is no rating consensus; say nothing then.
+    const rk = String(an.recKey || '').trim().toLowerCase();
+    const rec = rk && rk !== 'none' && rk !== 'null' && rk !== 'undefined' ? `, consensus ${rk.replace(/_/g, ' ')}` : '';
     if (up > 5) good.push(`Mean target $${an.targetMean.toFixed(2)}${n}, ${sgn(up)} implied upside${rec}.`);
     else if (up < -5) bad.push(`Mean target $${an.targetMean.toFixed(2)}${n}, ${pct(up, 1)} below the current price${rec}.`);
   }
@@ -147,11 +171,15 @@ export function buildPlainFacts(a) {
   }
 
   // Bottom line
-  const s = a.score;
-  const dir = s >= 35 ? 'Bullish' : s >= 15 ? 'Leaning bullish' : s <= -35 ? 'Bearish' : s <= -15 ? 'Leaning bearish' : 'Neutral';
-  const cov = a.coverage != null ? `, ${Math.round(a.coverage * 100)}% data coverage` : '';
-  const mv = a.move ? ` Big move odds ${String(a.move.level).toLowerCase()} (${a.move.value}/100)${a.move.typicalMonthMovePct ? `, typical month ±${a.move.typicalMonthMovePct}%` : ''}.` : '';
-  const bottom = `${dir} at ${s > 0 ? '+' : ''}${s} of ±100${cov}.${mv}`;
+  // Never print NaN: if the score or move odds are missing, say so plainly.
+  const s = isNum(a.score) ? Math.round(a.score) : null;
+  const dir = s == null ? null : s >= 35 ? 'Bullish' : s >= 15 ? 'Leaning bullish' : s <= -35 ? 'Bearish' : s <= -15 ? 'Leaning bearish' : 'Neutral';
+  const cov = isNum(a.coverage) ? `, ${Math.round(a.coverage * 100)}% data coverage` : '';
+  const m = a.move;
+  const mvTail = m && isNum(m.typicalMonthMovePct) && m.typicalMonthMovePct > 0 ? `, typical month ±${m.typicalMonthMovePct}%` : '';
+  const mv = m && isNum(m.value) && m.level ? ` Big move odds ${String(m.level).toLowerCase()} (${Math.round(m.value)}/100)${mvTail}.` : '';
+  const head = s == null ? `Score unavailable${cov ? ` (${cov.slice(2)})` : ''}` : `${dir} at ${s > 0 ? '+' : ''}${s} of ±100${cov}`;
+  const bottom = `${head}.${mv}`;
 
   return { bottom, good: good.slice(0, 5), bad: bad.slice(0, 5), watch: watch.slice(0, 5) };
 }
@@ -180,6 +208,7 @@ async function aiParagraph(env, a, f) {
     temperature: 0.2,
   });
   const text = cleanCopy((r && (r.response || r.result)) || '');
+  if (/\bNaN\b|\bundefined\b/.test(text)) return null;
   // Basic sanity checks so a bad generation never reaches the page.
   if (text.length < 80 || text.length > 1100 || /tiny piece|complete beginner|owning a (small|tiny)/i.test(text)) return null;
   return text;
@@ -192,7 +221,7 @@ export async function plainSummary(env, a, opts = {}) {
   let paragraph = null;
   let aiWritten = false;
   try {
-    const p = cached(env, `sum2:${a.ticker}:${a.score}:${(a.news && a.news[0] && a.news[0].title || '').slice(0, 24)}`, 3 * 3600, () => aiParagraph(env, a, f));
+    const p = cached(env, `sum3:${a.ticker}:${a.score}:${(a.news && a.news[0] && a.news[0].title || '').slice(0, 24)}`, 3 * 3600, () => aiParagraph(env, a, f));
     paragraph = await withBudget(p, opts.budgetMs || 5000, null, opts.waitUntil);
     aiWritten = !!paragraph;
   } catch {}

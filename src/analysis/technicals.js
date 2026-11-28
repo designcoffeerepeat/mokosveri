@@ -85,7 +85,8 @@ export function computeTechnicals(bars, benchBars = null) {
 
   const rets = [];
   for (let i = Math.max(1, n - 20); i < n; i++) rets.push(Math.log(c[i] / c[i - 1]));
-  const vol20 = stdev(rets) * Math.sqrt(252) * 100; // annualized %
+  const volRaw = stdev(rets.filter(isFinite)) * Math.sqrt(252) * 100; // annualized %
+  const vol20 = isFinite(volRaw) ? volRaw : null;
 
   const a14 = atr(bars, 14);
   const avgVol20 = sma(v.slice(0, -1), 20);
